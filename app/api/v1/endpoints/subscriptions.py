@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 from uuid import UUID
-from typing import List
+from typing import List, Optional
 
 from app.schemas.subscription import (
     Subscription,
@@ -53,27 +53,20 @@ def create_subscription(
 
 @router.get(
     "/active",
-    response_model=Subscription,
+    response_model=Optional[Subscription],
     summary="Get active subscription",
-    description="Get the active subscription for a client"
+    description="Get the active subscription for a client. Returns null if no active subscription exists."
 )
 def get_active_subscription(
         client_id: UUID,
         current_user: User = Depends(get_current_active_user),
         db: Session = Depends(get_db)
 ):
-    """Get the active subscription for a client"""
+    """Get the active subscription for a client. Returns null if no active subscription exists."""
     SubscriptionValidator.validate_client_exists(db, client_id)
 
     subscription = SubscriptionService.get_active_subscription_by_client(db, client_id)
-    if not subscription:
-        from fastapi import HTTPException
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Client has no active subscription"
-        )
-
-    return subscription
+    return subscription  # Returns None/null if no active subscription, which is a valid state
 
 
 @router.get(
