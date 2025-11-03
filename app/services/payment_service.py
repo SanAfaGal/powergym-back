@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from uuid import UUID
 from decimal import Decimal
 from app.schemas.payment import (
@@ -9,7 +9,10 @@ from app.schemas.payment import (
 )
 from app.repositories.payment_repository import PaymentRepository
 from app.repositories.subscription_repository import SubscriptionRepository
-from app.db.models import SubscriptionStatusEnum
+from app.db.models import SubscriptionStatusEnum, ClientModel, SubscriptionModel
+from app.services.notification_service import NotificationService
+from app.utils.common.formatters import format_client_name
+from app.core.async_processing import run_async_in_background
 from typing import List, Optional
 import logging
 
@@ -32,6 +35,9 @@ class PaymentService:
 
         # Check if subscription needs status update
         subscription = SubscriptionRepository.get_by_id(db, payment_data.subscription_id)
+        if not subscription:
+            raise ValueError(f"Subscription {payment_data.subscription_id} not found")
+
         remaining_debt = None
         new_status = subscription.status.value
 
@@ -50,6 +56,37 @@ class PaymentService:
                 new_status = SubscriptionStatusEnum.ACTIVE.value
                 remaining_debt = Decimal('0.00')
                 logger.info(f"Subscription {subscription.id} activated after full payment")
+
+        # Send Telegram notification in background
+        try:
+            # Reload subscription with relationships
+            subscription_with_rels = db.query(SubscriptionModel).options(
+                joinedload(SubscriptionModel.client),
+                joinedload(SubscriptionModel.plan)
+            ).filter(SubscriptionModel.id == subscription.id).first()
+
+            if subscription_with_rels and subscription_with_rels.client and subscription_with_rels.plan:
+                # Format client name using utility function
+                client_name = format_client_name(
+                    first_name=subscription_with_rels.client.first_name,
+                    last_name=subscription_with_rels.client.last_name,
+                    middle_name=subscription_with_rels.client.middle_name,
+                    second_last_name=subscription_with_rels.client.second_last_name
+                )
+
+                # Send notification asynchronously (fire and forget)
+                run_async_in_background(
+                    NotificationService.send_payment_notification(
+                        client_name=client_name,
+                        amount=payment_data.amount,
+                        payment_method=payment_data.payment_method.value,
+                        plan_name=subscription_with_rels.plan.name,
+                        remaining_debt=remaining_debt
+                    )
+                )
+        except Exception as e:
+            # Log error but don't fail the payment creation
+            logger.error("Error sending payment notification: %s", str(e), exc_info=True)
 
         payment = Payment.from_orm(payment_model)
 

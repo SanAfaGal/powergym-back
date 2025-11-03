@@ -16,6 +16,12 @@ from app.schemas.attendance import (
 )
 from app.db.models import ClientModel, SubscriptionModel
 from app.utils.attendance import AccessValidationUtil
+from app.utils.common.formatters import format_client_name
+from app.services.notification_service import NotificationService
+from app.core.async_processing import run_async_in_background
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class AttendanceService:
@@ -47,6 +53,30 @@ class AttendanceService:
             client_id=client_id,
             meta_info=meta_info or {}
         )
+
+        # Send Telegram notification in background
+        try:
+            client = db.query(ClientModel).filter(ClientModel.id == client_id).first()
+            if client:
+                # Format client name using utility function
+                client_name = format_client_name(
+                    first_name=client.first_name,
+                    last_name=client.last_name,
+                    middle_name=client.middle_name,
+                    second_last_name=client.second_last_name
+                )
+
+                # Send notification asynchronously (fire and forget)
+                run_async_in_background(
+                    NotificationService.send_check_in_notification(
+                        client_name=client_name,
+                        dni_number=client.dni_number,
+                        check_in_time=attendance.check_in
+                    )
+                )
+        except Exception as e:
+            # Log error but don't fail the attendance creation
+            logger.error("Error sending check-in notification: %s", str(e), exc_info=True)
 
         return AttendanceResponse(
             id=attendance.id,

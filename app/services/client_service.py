@@ -5,9 +5,14 @@ from app.schemas.client import (
 from app.repositories.client_repository import ClientRepository
 from app.db.models import DocumentTypeEnum, GenderTypeEnum, BiometricTypeEnum
 from app.core.encryption import get_encryption_service
+from app.services.notification_service import NotificationService
+from app.core.async_processing import run_async_in_background
 from uuid import UUID
 from typing import List, Optional
 import base64
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ClientService:
 
@@ -30,6 +35,22 @@ class ClientService:
             gender=gender_enum,
             address=client_data.address
         )
+
+        # Send Telegram notification in background
+        try:
+            run_async_in_background(
+                NotificationService.send_client_registration_notification(
+                    first_name=client_data.first_name,
+                    middle_name=client_data.middle_name,
+                    last_name=client_data.last_name,
+                    second_last_name=client_data.second_last_name,
+                    dni_number=client_data.dni_number,
+                    phone=client_data.phone
+                )
+            )
+        except Exception as e:
+            # Log error but don't fail the client creation
+            logger.error("Error sending client registration notification: %s", str(e), exc_info=True)
 
         return Client(
             id=client_model.id,

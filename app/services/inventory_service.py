@@ -6,6 +6,7 @@ Implements service pattern for clean separation of concerns.
 Handles validation, orchestration, and business rules.
 """
 
+import logging
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional
@@ -24,6 +25,10 @@ from app.schemas.inventory import (
     InventoryMovementResponse,
     InventoryMovementTypeEnum,
 )
+from app.services.notification_service import NotificationService
+from app.core.async_processing import run_async_in_background
+
+logger = logging.getLogger(__name__)
 
 
 class ProductService:
@@ -455,6 +460,7 @@ class MovementService:
         """
         self.db = db
         self.movement_repo = MovementRepository(db)
+        self.product_repo = ProductRepository(db)
 
     # ============================================================
     # CREATE OPERATIONS
@@ -483,7 +489,34 @@ class MovementService:
 
         try:
             db_movement = self.movement_repo.create(movement_data)
-            return InventoryMovementResponse.model_validate(db_movement)
+            movement_response = InventoryMovementResponse.model_validate(db_movement)
+
+            # Send Telegram notification for EXIT movements (sales)
+            if movement_data.movement_type == InventoryMovementTypeEnum.EXIT:
+                try:
+                    # Get product information
+                    product = self.product_repo.get_by_id(movement_data.product_id)
+                    if product:
+                        # Calculate values (quantity is negative for EXIT)
+                        quantity_sold = abs(db_movement.quantity)
+                        unit_price = product.price
+                        total = quantity_sold * unit_price
+
+                        # Send notification asynchronously (fire and forget)
+                        run_async_in_background(
+                            NotificationService.send_inventory_sale_notification(
+                                product_name=product.name,
+                                quantity=quantity_sold,
+                                unit_price=unit_price,
+                                total=total,
+                                responsible=movement_data.responsible
+                            )
+                        )
+                except Exception as e:
+                    # Log error but don't fail the movement creation
+                    logger.error("Error sending inventory sale notification: %s", str(e), exc_info=True)
+
+            return movement_response
         except Exception as e:
             self.db.rollback()
             raise ValueError(f"Failed to create movement: {str(e)}")

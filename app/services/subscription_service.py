@@ -1,11 +1,17 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from uuid import UUID
 from app.schemas.subscription import Subscription, SubscriptionCreate, SubscriptionRenew, SubscriptionCancel
 from app.repositories.subscription_repository import SubscriptionRepository
 from app.repositories.plan_repository import PlanRepository
-from app.db.models import SubscriptionStatusEnum
+from app.db.models import SubscriptionStatusEnum, SubscriptionModel, ClientModel
 from app.utils.subscription.calculator import SubscriptionCalculator
+from app.utils.common.formatters import format_client_name
+from app.services.notification_service import NotificationService
+from app.core.async_processing import run_async_in_background
 from typing import List, Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SubscriptionService:
@@ -25,6 +31,38 @@ class SubscriptionService:
             end_date=end_date,
             status=SubscriptionStatusEnum.PENDING_PAYMENT
         )
+
+        # Send Telegram notification in background
+        try:
+            # Reload subscription with relationships
+            subscription_with_rels = db.query(SubscriptionModel).options(
+                joinedload(SubscriptionModel.client),
+                joinedload(SubscriptionModel.plan)
+            ).filter(SubscriptionModel.id == subscription_model.id).first()
+
+            if subscription_with_rels and subscription_with_rels.client and subscription_with_rels.plan:
+                # Format client name using utility function
+                client_name = format_client_name(
+                    first_name=subscription_with_rels.client.first_name,
+                    last_name=subscription_with_rels.client.last_name,
+                    middle_name=subscription_with_rels.client.middle_name,
+                    second_last_name=subscription_with_rels.client.second_last_name
+                )
+
+                # Send notification asynchronously (fire and forget)
+                run_async_in_background(
+                    NotificationService.send_subscription_notification(
+                        client_name=client_name,
+                        plan_name=subscription_with_rels.plan.name,
+                        start_date=subscription_data.start_date.strftime("%Y-%m-%d"),
+                        end_date=end_date.strftime("%Y-%m-%d"),
+                        plan_price=plan.price,
+                        status=subscription_model.status.value
+                    )
+                )
+        except Exception as e:
+            # Log error but don't fail the subscription creation
+            logger.error("Error sending subscription notification: %s", str(e), exc_info=True)
 
         return Subscription.from_orm(subscription_model)
 

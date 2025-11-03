@@ -109,6 +109,11 @@ class Settings(BaseSettings):
     # ==================== ADMIN UI ====================
     ADMINER_PORT: Optional[int] = Field(None, description="Adminer UI port")
 
+    # ==================== TELEGRAM NOTIFICATIONS ====================
+    TELEGRAM_BOT_TOKEN: Optional[str] = Field(None, description="Telegram bot token")
+    TELEGRAM_CHAT_ID: Optional[str] = Field(None, description="Telegram chat ID for notifications")
+    TELEGRAM_ENABLED: bool = Field(default=True, description="Enable Telegram notifications")
+
     class Config:
         env_file = ".env"
         case_sensitive = True
