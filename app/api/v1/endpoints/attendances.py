@@ -251,7 +251,7 @@ def get_all_attendances(
 
 
 @router.get(
-    "/clients/{client_id}",
+    "/clients/{client_id}/attendances",
     response_model=list[AttendanceResponse],
     status_code=status.HTTP_200_OK,
     summary="Client attendance history",
