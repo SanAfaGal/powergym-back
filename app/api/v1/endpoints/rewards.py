@@ -32,9 +32,9 @@ def calculate_reward_eligibility(
     Calculate eligibility for a reward.
 
     This endpoint:
-    - Verifies subscription exists and is terminated
+    - Verifies subscription exists (can be active or terminated)
     - Checks if plan is monthly
-    - Counts attendances in the cycle
+    - Counts attendances in the cycle (from start_date to today if active, or to end_date if terminated)
     - Creates reward if eligible (>= 20 attendances)
     """
     return RewardService.calculate_eligibility(db, subscription_id)
