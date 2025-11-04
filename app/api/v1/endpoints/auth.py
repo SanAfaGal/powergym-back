@@ -13,7 +13,7 @@ from app.core.security import (
 from app.schemas.token import Token, RefreshTokenRequest
 from app.schemas.user import UserCreate, User, UserInDB
 from app.services.user_service import UserService
-from app.api.dependencies import get_current_user, get_current_active_user
+from app.api.dependencies import get_current_user, get_current_active_user, get_current_admin_user
 
 router = APIRouter()
 
@@ -44,15 +44,14 @@ router = APIRouter()
 )
 def register(
     user_data: UserCreate,
-    current_user: Annotated[UserInDB, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_admin_user)],
     db: Session = Depends(get_db)
 ):
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only administrators can register new users"
-        )
-
+    """
+    Register a new user account.
+    
+    **Required permissions:** Admin only
+    """
     existing_user = UserService.get_user_by_username(db, user_data.username)
     if existing_user:
         raise HTTPException(

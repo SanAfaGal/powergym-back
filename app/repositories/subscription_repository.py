@@ -5,6 +5,7 @@ from sqlalchemy import and_, desc
 from uuid import UUID
 from datetime import date
 from typing import List, Optional
+from decimal import Decimal
 from app.db.models import SubscriptionModel, SubscriptionStatusEnum
 import logging
 
@@ -21,7 +22,8 @@ class SubscriptionRepository:
             plan_id: UUID,
             start_date: date,
             end_date: date,
-            status: SubscriptionStatusEnum = SubscriptionStatusEnum.PENDING_PAYMENT
+            status: SubscriptionStatusEnum = SubscriptionStatusEnum.PENDING_PAYMENT,
+            final_price: Optional[float] = None
     ) -> SubscriptionModel:
         """
         Create a new subscription.
@@ -33,6 +35,7 @@ class SubscriptionRepository:
             start_date: Subscription start date
             end_date: Subscription end date
             status: Initial status (default: PENDING_PAYMENT)
+            final_price: Optional final price (with discount applied)
 
         Returns:
             SubscriptionModel: Created subscription
@@ -43,7 +46,8 @@ class SubscriptionRepository:
                 plan_id=plan_id,
                 start_date=start_date,
                 end_date=end_date,
-                status=status
+                status=status,
+                final_price=final_price
             )
             db.add(subscription)
             db.commit()

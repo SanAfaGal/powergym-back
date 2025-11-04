@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, get_current_admin_user
 import logging
 from app.schemas.user import User
 from app.schemas.face_recognition import FaceAuthenticationRequest
@@ -220,11 +220,13 @@ def get_all_attendances(
             None,
             description="End date (ISO 8601): 2025-10-31T23:59:59Z"
         ),
-        current_user: User = Depends(get_current_user),
+        current_user: User = Depends(get_current_admin_user),
         db: Session = Depends(get_db)
 ):
     """
     Get all system attendances with filters.
+    
+    **Required permissions:** Admin only
 
     **Parameters:**
     - `limit`: Records per page (max 1000)

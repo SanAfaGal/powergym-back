@@ -12,6 +12,7 @@ from app.repositories.subscription_repository import SubscriptionRepository
 from app.db.models import SubscriptionStatusEnum, ClientModel, SubscriptionModel
 from app.services.notification_service import NotificationService
 from app.utils.common.formatters import format_client_name
+from app.utils.subscription.calculator import get_subscription_price
 from app.core.async_processing import run_async_in_background
 from typing import List, Optional
 import logging
@@ -43,8 +44,8 @@ class PaymentService:
 
         if subscription.status == SubscriptionStatusEnum.PENDING_PAYMENT:
             total_paid = PaymentRepository.get_total_paid(db, subscription.id)
-            plan_price = Decimal(str(subscription.plan.price))
-            remaining_debt = plan_price - total_paid
+            subscription_price = get_subscription_price(subscription)
+            remaining_debt = subscription_price - total_paid
 
             # If fully paid, activate
             if remaining_debt <= 0:
@@ -132,18 +133,22 @@ class PaymentService:
     def get_subscription_payment_stats(db: Session, subscription_id: UUID) -> PaymentStats:
         """Get payment statistics for a subscription"""
         subscription = SubscriptionRepository.get_by_id(db, subscription_id)
+        if not subscription:
+            raise ValueError(f"Subscription {subscription_id} not found")
+        
         total_paid = PaymentRepository.get_total_paid(db, subscription_id)
-        plan_price = Decimal(str(subscription.plan.price))
+        subscription_price = get_subscription_price(subscription)
 
         remaining_debt = Decimal('0.00')
         if subscription.status == SubscriptionStatusEnum.PENDING_PAYMENT:
-            remaining_debt = max(plan_price - total_paid, Decimal('0.00'))
+            remaining_debt = max(subscription_price - total_paid, Decimal('0.00'))
 
         total_payments = PaymentRepository.count_by_subscription(db, subscription_id)
         last_payment_date = PaymentRepository.get_last_payment_date(db, subscription_id)
 
         return PaymentStats(
             subscription_id=subscription_id,
+            client_id=None,
             total_payments=total_payments,
             total_amount_paid=total_paid,
             remaining_debt=remaining_debt,
@@ -158,6 +163,7 @@ class PaymentService:
         last_payment_date = PaymentRepository.get_last_payment_date_by_client(db, client_id)
 
         return PaymentStats(
+            subscription_id=None,
             client_id=client_id,
             total_payments=total_payments,
             total_amount_paid=total_paid,

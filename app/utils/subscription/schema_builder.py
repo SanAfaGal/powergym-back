@@ -18,7 +18,8 @@ class SubscriptionSchemaBuilder:
         return SubscriptionCreate(
             client_id=client_id,
             plan_id=input_data.plan_id,
-            start_date=input_data.start_date
+            start_date=input_data.start_date,
+            discount_percentage=input_data.discount_percentage
         )
 
     @staticmethod
@@ -34,7 +35,8 @@ class SubscriptionSchemaBuilder:
         return SubscriptionRenew(
             client_id=client_id,
             subscription_id=subscription_id,
-            plan_id=input_data.plan_id
+            plan_id=input_data.plan_id,
+            discount_percentage=input_data.discount_percentage
         )
 
     @staticmethod

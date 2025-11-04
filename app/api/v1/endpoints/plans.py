@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from app.schemas.plan import Plan, PlanCreate, PlanUpdate
 from app.services.plan_service import PlanService
-from app.api.dependencies import get_current_active_user
+from app.api.dependencies import get_current_active_user, get_current_admin_user
 from app.schemas.user import User
 from app.db.session import get_db
 from uuid import UUID
@@ -44,11 +44,13 @@ router = APIRouter()
 )
 def create_plan(
     plan_data: PlanCreate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
     """
     Create a new subscription plan.
+    
+    **Required permissions:** Admin only
     """
     if plan_data.slug:
         existing_plan = PlanService.get_plan_by_slug(db, plan_data.slug)
@@ -290,11 +292,13 @@ def get_plan(
 def update_plan(
     plan_id: UUID,
     plan_update: PlanUpdate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
     """
     Update a plan's information.
+    
+    **Required permissions:** Admin only
     """
     existing_plan = PlanService.get_plan_by_id(db, plan_id)
     if not existing_plan:
@@ -333,11 +337,13 @@ def update_plan(
 )
 def delete_plan(
     plan_id: UUID,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
     """
     Soft delete a plan.
+    
+    **Required permissions:** Admin only
     """
     existing_plan = PlanService.get_plan_by_id(db, plan_id)
     if not existing_plan:

@@ -20,8 +20,29 @@ class SubscriptionService:
     @staticmethod
     def create_subscription(db: Session, subscription_data: SubscriptionCreate) -> Subscription:
         """Create a new subscription"""
+        from decimal import Decimal
+        
         plan = PlanRepository.get_by_id(db, subscription_data.plan_id)
+        if not plan:
+            raise ValueError(f"Plan {subscription_data.plan_id} not found")
+        
         end_date = SubscriptionCalculator.calculate_end_date(subscription_data.start_date, plan)
+
+        # Calculate final price if discount is provided
+        final_price = None
+        meta_info = {}
+        if subscription_data.discount_percentage is not None:
+            original_price = float(plan.price)
+            discount_percentage = subscription_data.discount_percentage
+            final_price = original_price * (1 - discount_percentage / 100)
+            
+            # Store pricing info in meta_info for audit trail
+            meta_info = {
+                "original_price": original_price,
+                "discount_percentage": discount_percentage,
+                "final_price": final_price,
+                "discount_amount": original_price - final_price
+            }
 
         subscription_model = SubscriptionRepository.create(
             db=db,
@@ -29,8 +50,16 @@ class SubscriptionService:
             plan_id=subscription_data.plan_id,
             start_date=subscription_data.start_date,
             end_date=end_date,
-            status=SubscriptionStatusEnum.PENDING_PAYMENT
+            status=SubscriptionStatusEnum.PENDING_PAYMENT,
+            final_price=final_price
         )
+        
+        # Update meta_info if discount was applied
+        if meta_info:
+            current_meta = subscription_model.meta_info or {}
+            subscription_model.meta_info = {**current_meta, **meta_info}
+            db.commit()
+            db.refresh(subscription_model)
 
         # Send Telegram notification in background
         try:
@@ -56,7 +85,7 @@ class SubscriptionService:
                         plan_name=subscription_with_rels.plan.name,
                         start_date=subscription_data.start_date.strftime("%Y-%m-%d"),
                         end_date=end_date.strftime("%Y-%m-%d"),
-                        plan_price=plan.price,
+                        plan_price=float(plan.price),
                         status=subscription_model.status.value
                     )
                 )
@@ -99,16 +128,37 @@ class SubscriptionService:
         - New subscription always starts as PENDING_PAYMENT
         """
         from datetime import timedelta
+        from decimal import Decimal
 
         old_sub = SubscriptionRepository.get_by_id(db, renewal_data.subscription_id)
+        if not old_sub:
+            raise ValueError(f"Subscription {renewal_data.subscription_id} not found")
 
         # Use provided plan or keep the same plan
         plan_id = renewal_data.plan_id or old_sub.plan_id
         plan = PlanRepository.get_by_id(db, plan_id)
+        if not plan:
+            raise ValueError(f"Plan {plan_id} not found")
 
         # Renewal always starts the day after current subscription ends
         renewal_start = old_sub.end_date + timedelta(days=1)
         end_date = SubscriptionCalculator.calculate_end_date(renewal_start, plan)
+
+        # Calculate final price if discount is provided
+        final_price = None
+        meta_info = {}
+        if renewal_data.discount_percentage is not None:
+            original_price = float(plan.price)
+            discount_percentage = renewal_data.discount_percentage
+            final_price = original_price * (1 - discount_percentage / 100)
+            
+            # Store pricing info in meta_info for audit trail
+            meta_info = {
+                "original_price": original_price,
+                "discount_percentage": discount_percentage,
+                "final_price": final_price,
+                "discount_amount": original_price - final_price
+            }
 
         subscription_model = SubscriptionRepository.create(
             db=db,
@@ -116,8 +166,16 @@ class SubscriptionService:
             plan_id=plan_id,
             start_date=renewal_start,
             end_date=end_date,
-            status=SubscriptionStatusEnum.PENDING_PAYMENT
+            status=SubscriptionStatusEnum.PENDING_PAYMENT,
+            final_price=final_price
         )
+        
+        # Update meta_info if discount was applied
+        if meta_info:
+            current_meta = subscription_model.meta_info or {}
+            subscription_model.meta_info = {**current_meta, **meta_info}
+            db.commit()
+            db.refresh(subscription_model)
 
         return Subscription.from_orm(subscription_model)
 

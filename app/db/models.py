@@ -71,6 +71,12 @@ class PaymentMethodEnum(str, Enum):
     QR = "qr"
 
 
+class RewardStatusEnum(str, Enum):
+    PENDING = "pending"
+    APPLIED = "applied"
+    EXPIRED = "expired"
+
+
 class UserModel(Base):
     __tablename__ = "users"
 
@@ -170,6 +176,7 @@ class SubscriptionModel(Base):
                     default=SubscriptionStatusEnum.PENDING_PAYMENT)
     cancellation_date = Column(Date, nullable=True)
     cancellation_reason = Column(Text, nullable=True)
+    final_price = Column(Numeric(10, 2), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     meta_info = Column(JSON, default={}, nullable=False)
@@ -304,3 +311,30 @@ class InventoryMovementModel(Base):
 
     def __repr__(self) -> str:
         return f"<InventoryMovement(id={self.id}, type={self.movement_type}, qty={self.quantity})>"
+
+
+class RewardModel(Base):
+    __tablename__ = "rewards"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    subscription_id = Column(UUID(as_uuid=True), ForeignKey("subscriptions.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    attendance_count = Column(Integer, nullable=False)
+    discount_percentage = Column(DECIMAL(5, 2), nullable=False, default=Decimal("20.00"))
+    eligible_date = Column(Date, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    status = Column(SQLEnum(RewardStatusEnum, name="reward_status_enum"), nullable=False, default=RewardStatusEnum.PENDING, index=True)
+    applied_at = Column(DateTime(timezone=True), nullable=True)
+    applied_subscription_id = Column(UUID(as_uuid=True), ForeignKey("subscriptions.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    meta_info = Column(JSON, default={}, nullable=False)
+
+    subscription = relationship("SubscriptionModel", foreign_keys=[subscription_id], backref="rewards")
+    client = relationship("ClientModel", backref="rewards")
+    applied_subscription = relationship("SubscriptionModel", foreign_keys=[applied_subscription_id])
+
+    __table_args__ = (
+        CheckConstraint("discount_percentage > 0 AND discount_percentage <= 100", name="rewards_discount_check"),
+        CheckConstraint("attendance_count >= 0", name="rewards_attendance_count_check"),
+    )

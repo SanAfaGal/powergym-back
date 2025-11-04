@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from app.repositories.subscription_repository import SubscriptionRepository
 from app.repositories.payment_repository import PaymentRepository
 from app.db.models import SubscriptionStatusEnum, PaymentMethodEnum
+from app.utils.subscription.calculator import get_subscription_price
 import logging
 
 logger = logging.getLogger(__name__)
@@ -115,12 +116,12 @@ class PaymentValidator:
         Raises:
             HTTPException 400 if amount exceeds remaining debt (for PENDING_PAYMENT)
         """
-        plan_price = Decimal(str(subscription.plan.price))
+        subscription_price = get_subscription_price(subscription)
 
         if subscription.status == SubscriptionStatusEnum.PENDING_PAYMENT:
             # Calculate remaining debt
             total_paid = PaymentRepository.get_total_paid(db, subscription.id)
-            remaining_debt = plan_price - total_paid
+            remaining_debt = subscription_price - total_paid
 
             if amount > remaining_debt:
                 raise HTTPException(

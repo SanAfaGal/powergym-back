@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
+from decimal import Decimal
 
 
 class SubscriptionCalculator:
@@ -35,3 +36,20 @@ class SubscriptionCalculator:
 
         # Last day is 1 day before the next subscription starts
         return end_date - timedelta(days=1)
+
+
+def get_subscription_price(subscription) -> Decimal:
+    """
+    Get the effective price for a subscription.
+    
+    Returns final_price if set, otherwise falls back to plan.price.
+    
+    Args:
+        subscription: SubscriptionModel instance with plan relationship loaded
+        
+    Returns:
+        Decimal: The price to use for payment calculations
+    """
+    if subscription.final_price is not None:
+        return Decimal(str(subscription.final_price))
+    return Decimal(str(subscription.plan.price))
