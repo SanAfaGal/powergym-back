@@ -1,42 +1,138 @@
+# =============================================================================
+# PowerGym Backend - Docker Compose Configuration for Development
+# =============================================================================
+# This file configures local development services using Docker Compose.
+# 
+# Services:
+#   - postgres: PostgreSQL database with pgvector extension
+#   - adminer: Database administration UI (optional)
+#
+# Usage:
+#   - Start services: docker-compose up -d
+#   - Stop services: docker-compose down
+#   - View logs: docker-compose logs -f
+#   - Reset database: docker-compose down -v (WARNING: deletes all data)
+# =============================================================================
+
 networks:
   powergym_network:
     driver: bridge
+    name: powergym_network
 
 services:
+  # ==========================================================================
+  # PostgreSQL Database with pgvector Extension
+  # ==========================================================================
   postgres:
     image: pgvector/pgvector:0.8.1-pg18-trixie
     container_name: powergym_db
     restart: unless-stopped
+    
     networks:
       - powergym_network
+    
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      # Database credentials - loaded from .env.development or .env
+      # Default values provided for convenience
+      POSTGRES_USER: ${POSTGRES_USER:-powergym_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-powergym}
+      # PostgreSQL configuration
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+      # Timezone
+      TZ: ${TZ:-UTC}
+    
     ports:
-      - "${POSTGRES_PORT}:5432"
+      # Expose PostgreSQL port to host
+      # Format: "host_port:container_port"
+      - "${POSTGRES_PORT:-5432}:5432"
+    
     volumes:
+      # Persistent data storage (survives container restarts)
       - postgres_data:/var/lib/postgresql/data
-      - ./init-scripts:/docker-entrypoint-initdb.d
+      # Initialization scripts (runs on first startup)
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      # Health check to ensure database is ready before other services start
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-powergym_user} -d ${POSTGRES_DB:-powergym}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    
+    # Resource limits (optional, uncomment if needed)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '1.0'
+    #       memory: 1G
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 512M
 
+  # ==========================================================================
+  # Adminer - Database Administration UI
+  # ==========================================================================
+  # Optional: Web-based database management tool
+  # Access at: http://localhost:${ADMINER_PORT:-8080}
   adminer:
     image: adminer:latest
     container_name: powergym_adminer
     restart: unless-stopped
+    
     networks:
       - powergym_network
+    
     ports:
-      - "${ADMINER_PORT}:8080"
+      # Expose Adminer web UI port
+      - "${ADMINER_PORT:-8080}:8080"
+    
     environment:
+      # Pre-configure connection to PostgreSQL service
       ADMINER_DEFAULT_SERVER: postgres
+      # Optional: Set default driver (postgresql)
+      ADMINER_DEFAULT_DRIVER: pgsql
+    
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy  # Wait for postgres to be healthy
+    
+    # Optional: Uncomment to disable Adminer in production-like environments
+    # profiles:
+    #   - dev
 
+  # ==========================================================================
+  # Redis Cache (Optional - Uncomment if needed)
+  # ==========================================================================
+  # Uncomment this service if you want to use Redis for caching
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: powergym_redis
+  #   restart: unless-stopped
+  #   networks:
+  #     - powergym_network
+  #   ports:
+  #     - "${REDIS_PORT:-6379}:6379"
+  #   volumes:
+  #     - redis_data:/data
+  #   command: redis-server --appendonly yes
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 3s
+  #     retries: 5
+
+# =============================================================================
+# Volumes
+# =============================================================================
+# Persistent storage for container data
+# Use 'docker-compose down -v' to remove volumes (WARNING: deletes all data)
 volumes:
   postgres_data:
     driver: local
+    name: powergym_postgres_data
+  # Uncomment if using Redis
+  # redis_data:
+  #   driver: local
+  #   name: powergym_redis_data
