@@ -27,6 +27,7 @@ class EmbeddingService:
 
             cls._app = FaceAnalysis(
                 name=settings.INSIGHTFACE_MODEL,
+                root="./",
                 providers=providers
             )
             cls._app.prepare(
