@@ -1,7 +1,7 @@
 from typing import List, Optional
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
-import pytz
+import os
 
 class Settings(BaseSettings):
     """Configuración de PowerGym Backend"""
@@ -21,10 +21,19 @@ class Settings(BaseSettings):
     BIOMETRIC_ENCRYPTION_KEY: str = Field(..., description="Encryption key for biometric data")
 
     # ==================== CORS & ALLOWED ORIGINS ====================
-    ALLOWED_ORIGINS: List[str] = Field(
-        default=["http://localhost:5173"],
-        description="Allowed origins for CORS"
+    # Store as string to avoid JSON parsing issues, convert to list in property
+    ALLOWED_ORIGINS_STR: str = Field(
+        default="http://localhost:5173",
+        description="Allowed origins for CORS (comma-separated string)"
     )
+    
+    @property
+    def ALLOWED_ORIGINS(self) -> List[str]:
+        """Parse ALLOWED_ORIGINS from comma-separated string to list."""
+        if not self.ALLOWED_ORIGINS_STR or self.ALLOWED_ORIGINS_STR.strip() == ',':
+            return ["http://localhost:5173"]
+        origins = [origin.strip() for origin in self.ALLOWED_ORIGINS_STR.split(',') if origin.strip()]
+        return origins if origins else ["http://localhost:5173"]
 
     # ==================== SUPER ADMIN ====================
     SUPER_ADMIN_USERNAME: str = Field(..., description="Initial admin username")
@@ -72,10 +81,18 @@ class Settings(BaseSettings):
         gt=0,
         description="Maximum image size in MB"
     )
-    ALLOWED_IMAGE_FORMATS: List[str] = Field(
-        default=["jpg", "jpeg", "png", "webp"],
-        description="Allowed image formats"
+    ALLOWED_IMAGE_FORMATS_STR: str = Field(
+        default="jpg,jpeg,png,webp",
+        description="Allowed image formats (comma-separated string)"
     )
+    
+    @property
+    def ALLOWED_IMAGE_FORMATS(self) -> List[str]:
+        """Parse ALLOWED_IMAGE_FORMATS from comma-separated string to list."""
+        if not self.ALLOWED_IMAGE_FORMATS_STR or self.ALLOWED_IMAGE_FORMATS_STR.strip() == ',':
+            return ["jpg", "jpeg", "png", "webp"]
+        formats = [fmt.strip().lower() for fmt in self.ALLOWED_IMAGE_FORMATS_STR.split(',') if fmt.strip()]
+        return formats if formats else ["jpg", "jpeg", "png", "webp"]
     IMAGE_COMPRESSION_QUALITY: int = Field(
         default=85,
         ge=1,
@@ -115,7 +132,16 @@ class Settings(BaseSettings):
     TELEGRAM_ENABLED: bool = Field(default=True, description="Enable Telegram notifications")
 
     class Config:
-        env_file = ".env"
+        # Load environment-specific .env file
+        # Priority: ENV_FILE env var > .env > .env.{ENVIRONMENT}
+        # Note: .env takes priority over .env.{ENVIRONMENT} to allow manual override
+        env_file = os.getenv(
+            "ENV_FILE",
+            ".env" if os.path.exists(".env") 
+            else (f".env.{os.getenv('ENVIRONMENT', 'development')}"
+                  if os.path.exists(f".env.{os.getenv('ENVIRONMENT', 'development')}")
+                  else None)
+        )
         case_sensitive = True
         extra = "ignore"  # Ignora variables de entorno no definidas
 
