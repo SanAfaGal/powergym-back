@@ -40,7 +40,7 @@ def create_refresh_token(
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(
-            days=settings.REFRESH_TOKEN_EXPIRE_DAYS
+            hours=settings.REFRESH_TOKEN_EXPIRE_HOURS
         )
 
     to_encode = {"exp": expire, "sub": str(subject), "type": "refresh"}

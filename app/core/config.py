@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     # ==================== SECURITY ====================
     SECRET_KEY: str = Field(..., description="JWT secret key")
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 300  # 5 horas
+    REFRESH_TOKEN_EXPIRE_HOURS: int = 12  # 12 horas (sesión máxima)
     BIOMETRIC_ENCRYPTION_KEY: str = Field(..., description="Encryption key for biometric data")
 
     # ==================== CORS & ALLOWED ORIGINS ====================

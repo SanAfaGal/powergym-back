@@ -115,7 +115,7 @@ def login(
         expires_delta=access_token_expires
     )
 
-    refresh_token_expires = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    refresh_token_expires = timedelta(hours=settings.REFRESH_TOKEN_EXPIRE_HOURS)
     refresh_token = create_refresh_token(
         subject=user.username,
         expires_delta=refresh_token_expires
