@@ -75,10 +75,6 @@ node_modules/
 .supabase/config.toml
 .supabase/.env
 
-# ─── Redis / cache local ───────────────
-*.rdb
-dump.rdb
-
 # ─── Archivos personalizados ───────────
 # Si usas embeddings o biometría, excluye los datos
 embeddings/

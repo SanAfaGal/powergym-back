@@ -51,9 +51,6 @@ class Settings(BaseSettings):
     POSTGRES_HOST: Optional[str] = Field(None, description="PostgreSQL host")
     POSTGRES_PORT: Optional[int] = Field(None, description="PostgreSQL port")
 
-    # ==================== CACHE ====================
-    REDIS_URL: Optional[str] = Field(None, description="Redis connection URL")
-
     # ==================== FACE RECOGNITION & MEDIAPIPE ====================
     EMBEDDING_DIMENSIONS: int
 
