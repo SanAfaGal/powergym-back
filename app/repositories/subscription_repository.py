@@ -7,7 +7,11 @@ from datetime import date
 from typing import List, Optional
 from decimal import Decimal
 from app.db.models import SubscriptionModel, SubscriptionStatusEnum
-from app.utils.timezone import TIMEZONE
+from app.utils.timezone import (
+    COLOMBIA_TIMEZONE,
+    get_current_colombia_datetime,
+    get_today_colombia,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -264,7 +268,7 @@ class SubscriptionRepository:
                 return None
 
             subscription.status = SubscriptionStatusEnum.CANCELED
-            subscription.cancellation_date = date.today()
+            subscription.cancellation_date = get_today_colombia()
             subscription.cancellation_reason = cancellation_reason
 
             db.commit()
@@ -396,7 +400,7 @@ class SubscriptionRepository:
         """
         from datetime import timedelta
 
-        threshold_date = date.today() + timedelta(days=days_threshold)
+        threshold_date = get_today_colombia() + timedelta(days=days_threshold)
 
         return db.query(SubscriptionModel).filter(
             and_(
@@ -420,9 +424,8 @@ class SubscriptionRepository:
             List[SubscriptionModel]: List of expired subscriptions
         """
         from datetime import datetime
-        # Get current date in Bogotá timezone
-        now_bogota = datetime.now(TIMEZONE)
-        today_bogota = now_bogota.date()
+        # Get current date in Colombia timezone
+        today_bogota = get_today_colombia()
         
         return db.query(SubscriptionModel).filter(
             and_(
@@ -481,9 +484,8 @@ class SubscriptionRepository:
             List[SubscriptionModel]: List of scheduled subscriptions ready to activate
         """
         from datetime import datetime
-        # Get current date in Bogotá timezone
-        now_bogota = datetime.now(TIMEZONE)
-        today_bogota = now_bogota.date()
+        # Get current date in Colombia timezone
+        today_bogota = get_today_colombia()
         
         return db.query(SubscriptionModel).filter(
             and_(

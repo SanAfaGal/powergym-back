@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from app.utils.timezone import get_current_utc_datetime
 from typing import Any, Union
 import jwt
 from jwt.exceptions import InvalidTokenError
@@ -21,9 +22,9 @@ def create_access_token(
         expires_delta: timedelta | None = None
 ) -> str:
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = get_current_utc_datetime() + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(
+        expire = get_current_utc_datetime() + timedelta(
             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
         )
 
@@ -37,9 +38,9 @@ def create_refresh_token(
         expires_delta: timedelta | None = None
 ) -> str:
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = get_current_utc_datetime() + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(
+        expire = get_current_utc_datetime() + timedelta(
             hours=settings.REFRESH_TOKEN_EXPIRE_HOURS
         )
 

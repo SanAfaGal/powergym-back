@@ -197,7 +197,8 @@ class AttendanceService:
             return False, AccessDenialReason.NO_SUBSCRIPTION, None
 
         # 4. Suscripción no expirada
-        if subscription.end_date < datetime.now().date():
+        from app.utils.timezone import get_today_colombia
+        if subscription.end_date < get_today_colombia():
             return (
                 False,
                 AccessDenialReason.SUBSCRIPTION_EXPIRED,

@@ -17,7 +17,7 @@ from app.schemas.user import User
 from app.db.session import get_db
 from app.utils.subscription.schema_builder import SubscriptionSchemaBuilder
 from app.utils.subscription.validators import SubscriptionValidator
-from app.utils.timezone import TIMEZONE
+from app.utils.timezone import get_current_colombia_datetime, get_today_colombia
 
 router = APIRouter(prefix="/clients/{client_id}/subscriptions", tags=["subscriptions"])
 
@@ -202,8 +202,8 @@ def expire_subscriptions(
     # Execute expiration
     expired_count = SubscriptionService.expire_subscriptions(db)
     
-    # Get current time in Bogotá timezone
-    now_bogota = datetime.now(TIMEZONE)
+    # Get current time in Colombia timezone
+    now_bogota = get_current_colombia_datetime()
     
     return ExpireSubscriptionsResponse(
         expired_count=expired_count,
@@ -233,8 +233,8 @@ def activate_subscriptions(
     # Execute activation
     activated_count = SubscriptionService.activate_scheduled_subscriptions(db)
     
-    # Get current time in Bogotá timezone
-    now_bogota = datetime.now(TIMEZONE)
+    # Get current time in Colombia timezone
+    now_bogota = get_current_colombia_datetime()
     
     return ActivateSubscriptionsResponse(
         activated_count=activated_count,

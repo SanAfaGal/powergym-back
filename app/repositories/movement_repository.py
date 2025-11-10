@@ -315,7 +315,8 @@ class MovementRepository:
         Returns:
             List of today's InventoryMovementModel instances
         """
-        today_start_utc, today_end_utc = get_date_range_utc(datetime.now())
+        from app.utils.timezone import get_today_colombia
+        today_start_utc, today_end_utc = get_date_range_utc(get_today_colombia())
         return self.get_by_date_range(today_start_utc, today_end_utc)
 
     def get_today_exits(self) -> list[InventoryMovementModel]:
@@ -338,8 +339,9 @@ class MovementRepository:
         Returns:
             List of this week's movements
         """
-        today = datetime.now()
-        week_start_date = today - timedelta(days=today.weekday())
+        from app.utils.timezone import get_current_colombia_datetime
+        today = get_current_colombia_datetime()
+        week_start_date = today.date() - timedelta(days=today.date().weekday())
 
         week_start_utc, week_end_utc = get_date_range_utc(week_start_date)
         _, today_end_utc = get_date_range_utc(today)
@@ -353,7 +355,8 @@ class MovementRepository:
         Returns:
             List of this month's movements
         """
-        today = datetime.now()
+        from app.utils.timezone import get_current_colombia_datetime
+        today = get_current_colombia_datetime()
         month_start_date = datetime(today.year, today.month, 1)
 
         month_start_utc, _ = get_date_range_utc(month_start_date)

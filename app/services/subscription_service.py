@@ -10,7 +10,7 @@ from app.utils.subscription.calculator import SubscriptionCalculator
 from app.utils.common.formatters import format_client_name
 from app.services.notification_service import NotificationService
 from app.core.async_processing import run_async_in_background
-from app.utils.timezone import TIMEZONE
+# TIMEZONE import removed - use specific functions from app.utils.timezone instead
 from typing import List, Optional
 import logging
 
@@ -152,7 +152,7 @@ class SubscriptionService:
         """
         from datetime import timedelta, date
         from decimal import Decimal
-        from app.utils.timezone import TIMEZONE
+        from app.utils.timezone import get_today_colombia
 
         old_sub = SubscriptionRepository.get_by_id(db, renewal_data.subscription_id)
         if not old_sub:
@@ -169,9 +169,8 @@ class SubscriptionService:
         end_date = SubscriptionCalculator.calculate_end_date(renewal_start, plan)
 
         # Determine status based on start date
-        # Get today's date in Bogotá timezone
-        from datetime import datetime as dt
-        today_bogota = dt.now(TIMEZONE).date()
+        # Get today's date in Colombia timezone
+        today_bogota = get_today_colombia()
         
         # If renewal starts in the future, it's SCHEDULED
         # Otherwise, it's PENDING_PAYMENT
@@ -229,7 +228,7 @@ class SubscriptionService:
         - If start_date > today: keep as SCHEDULED (still in the future)
         """
         from datetime import datetime as dt
-        from app.utils.timezone import TIMEZONE
+        from app.utils.timezone import get_today_colombia
         
         # Get the subscription before canceling to check its status and client_id
         subscription_to_cancel = SubscriptionRepository.get_by_id(db, cancel_data.subscription_id)
@@ -242,8 +241,8 @@ class SubscriptionService:
         # If we're canceling an active subscription, check for scheduled renewals first
         scheduled_to_update = []
         if was_active:
-            # Get today's date in Bogotá timezone
-            today_bogota = dt.now(TIMEZONE).date()
+            # Get today's date in Colombia timezone
+            today_bogota = get_today_colombia()
             
             # Find SCHEDULED subscriptions for this client
             scheduled_subscriptions = db.query(SubscriptionModel).filter(
@@ -320,7 +319,7 @@ class SubscriptionService:
 
         logger.info(
             f"Expired {expired_count} subscription(s). "
-            f"Reference date (Bogotá): {datetime.now(TIMEZONE).date()}"
+            f"Reference date (Colombia): {get_today_colombia()}"
         )
 
         return expired_count
@@ -375,7 +374,7 @@ class SubscriptionService:
 
         logger.info(
             f"Activated {activated_count} scheduled subscription(s). "
-            f"Reference date (Bogotá): {datetime.now(TIMEZONE).date()}"
+            f"Reference date (Colombia): {get_today_colombia()}"
         )
 
         return activated_count

@@ -1,12 +1,13 @@
 from datetime import datetime
+from app.utils.timezone import get_today_colombia
 
 
 class AccessValidationUtil:
-    """Utilidades para validación de acceso."""
+    """Utilities for access validation."""
 
     @staticmethod
     def format_client_info(client) -> dict:
-        """Formatear información del cliente."""
+        """Format client information."""
         return {
             "first_name": client.first_name,
             "last_name": client.last_name,
@@ -15,9 +16,10 @@ class AccessValidationUtil:
 
     @staticmethod
     def format_subscription_info(subscription) -> dict:
-        """Formatear información de suscripción."""
+        """Format subscription information."""
+        today = get_today_colombia()
         return {
             "status": subscription.status,
             "end_date": subscription.end_date.isoformat(),
-            "days_remaining": (subscription.end_date - datetime.now().date()).days
+            "days_remaining": (subscription.end_date - today).days
         }

@@ -83,7 +83,8 @@ class RewardService:
         # Count attendances in cycle
         # For active subscriptions: count from start_date to today
         # For terminated subscriptions: count from start_date to end_date
-        today = date.today()
+        from app.utils.timezone import get_today_colombia, get_current_utc_datetime
+        today = get_today_colombia()
         start_date = subscription.start_date
         end_date = subscription.end_date
         client_id = subscription.client_id
@@ -191,7 +192,7 @@ class RewardService:
             )
 
         # Validate expiration
-        now = datetime.now(timezone.utc)
+        now = get_current_utc_datetime()
         if reward.expires_at <= now:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

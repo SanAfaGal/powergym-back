@@ -38,7 +38,12 @@ from app.schemas.statistics import (
     StatisticsResponse,
     ActivityMetadata,
 )
-from app.utils.timezone import TIMEZONE, get_date_range_utc
+from app.utils.timezone import (
+    get_today_colombia,
+    get_date_range_utc,
+    get_datetime_hours_ago,
+    get_current_utc_datetime,
+)
 
 
 class StatisticsService:
@@ -175,7 +180,7 @@ class StatisticsService:
 
     def get_subscription_stats(self, period_dates: Optional[Dict[str, date]] = None) -> SubscriptionStats:
         """Get subscription statistics."""
-        today = date.today()
+        today = get_today_colombia()
         seven_days_later = today + timedelta(days=7)
         seven_days_ago = today - timedelta(days=7)
 
@@ -538,12 +543,8 @@ class StatisticsService:
     def get_recent_activities(self, limit: int = 20) -> List[RecentActivity]:
         """Get recent activities from multiple sources."""
         activities: List[RecentActivity] = []
-        # Calculate 24 hours ago in local time, then convert to UTC
-        # Get current time in local timezone
-        now_local = TIMEZONE.localize(datetime.now())
-        last_24h_local = now_local - timedelta(hours=24)
-        # Convert to UTC
-        last_24h_utc = last_24h_local.astimezone(timezone.utc)
+        # Calculate 24 hours ago in Colombia timezone, then convert to UTC
+        last_24h_utc = get_datetime_hours_ago(24)
 
         # Check-ins
         check_ins = (
@@ -744,6 +745,6 @@ class StatisticsService:
             attendance_stats=attendance_stats,
             inventory_stats=inventory_stats,
             alerts=alerts,
-            generated_at=datetime.now(timezone.utc),
+            generated_at=get_current_utc_datetime(),
         )
 

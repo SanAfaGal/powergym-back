@@ -5,7 +5,7 @@ from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from app.db.models import StockStatusEnum, InventoryMovementTypeEnum
-from app.utils.timezone import to_local
+from app.utils.timezone import convert_to_colombia
 
 
 # ============================================================
@@ -97,8 +97,8 @@ class InventoryMovementResponse(BaseModel):
     @field_validator("movement_date", mode="after")
     @classmethod
     def convert_to_local(cls, v: datetime) -> datetime:
-        """Convierte automáticamente a hora local"""
-        return to_local(v)
+        """Convert UTC datetime to Colombia timezone for display"""
+        return convert_to_colombia(v)
 
 
 class InventoryMovementDetailResponse(InventoryMovementResponse):

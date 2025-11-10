@@ -64,7 +64,8 @@ class SubscriptionValidator:
     @staticmethod
     def validate_start_date_not_in_past(start_date: date):
         """Validate start_date is today or in the future"""
-        today = date.today()
+        from app.utils.timezone import get_today_colombia
+        today = get_today_colombia()
         if start_date < today:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

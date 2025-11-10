@@ -125,7 +125,8 @@ class PaymentRepository:
         Returns:
             PaymentModel or None
         """
-        today = date.today()
+        from app.utils.timezone import get_today_colombia
+        today = get_today_colombia()
 
         return db.query(PaymentModel).filter(
             and_(

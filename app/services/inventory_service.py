@@ -656,7 +656,8 @@ class MovementService:
             Dictionary with sales statistics
         """
         if date is None:
-            date = datetime.now()
+            from app.utils.timezone import get_current_colombia_datetime
+            date = get_current_colombia_datetime()
 
         sales_data = self.movement_repo.get_daily_sales(date, responsible)
 
@@ -685,7 +686,8 @@ class MovementService:
             Dictionary with sales and amounts by employee
         """
         if date is None:
-            date = datetime.now()
+            from app.utils.timezone import get_current_colombia_datetime
+            date = get_current_colombia_datetime()
 
         sales_by_employee = self.movement_repo.get_sales_by_employee(date)
 

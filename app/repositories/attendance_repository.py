@@ -10,7 +10,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import AttendanceModel, ClientModel
-from app.utils.timezone import get_date_range_utc, TIMEZONE
+from app.utils.timezone import (
+    get_date_range_utc,
+    get_current_colombia_datetime,
+    COLOMBIA_TIMEZONE,
+    convert_to_colombia,
+)
 
 
 class AttendanceRepository:
@@ -137,12 +142,11 @@ class AttendanceRepository:
         # Si no se proporciona fecha, usar la fecha actual en hora de Colombia
         if check_date is None:
             # Obtener la fecha/hora actual en Colombia
-            colombia_now = datetime.now(TIMEZONE)
-            check_date = colombia_now
+            check_date = get_current_colombia_datetime()
         else:
             # Si se proporciona una fecha sin timezone, asumir que es hora de Colombia
             if check_date.tzinfo is None:
-                check_date = TIMEZONE.localize(check_date)
+                check_date = convert_to_colombia(check_date)
 
         # Convertir el día local (Colombia) a rango UTC para consultar en la BD
         day_start_utc, day_end_utc = get_date_range_utc(check_date)

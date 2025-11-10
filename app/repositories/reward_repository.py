@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 from uuid import UUID
 from datetime import datetime, timezone
+from app.utils.timezone import get_current_utc_datetime
 from typing import List, Optional
 from app.db.models import RewardModel, RewardStatusEnum
 import logging
@@ -107,7 +108,7 @@ class RewardRepository:
         Returns:
             List[RewardModel]: List of available rewards
         """
-        now = datetime.now(timezone.utc)
+        now = get_current_utc_datetime()
         return db.query(RewardModel).filter(
             and_(
                 RewardModel.client_id == client_id,
@@ -146,7 +147,7 @@ class RewardRepository:
                 return None
 
             reward.status = RewardStatusEnum.APPLIED
-            reward.applied_at = datetime.now(timezone.utc)
+            reward.applied_at = get_current_utc_datetime()
             reward.applied_subscription_id = subscription_id
             reward.discount_percentage = discount_percentage
 
@@ -172,7 +173,7 @@ class RewardRepository:
         Returns:
             List[RewardModel]: List of expired pending rewards
         """
-        now = datetime.now(timezone.utc)
+        now = get_current_utc_datetime()
         return db.query(RewardModel).filter(
             and_(
                 RewardModel.status == RewardStatusEnum.PENDING,
