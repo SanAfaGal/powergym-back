@@ -7,6 +7,7 @@ from typing import Optional, List, Tuple
 from uuid import UUID
 
 from sqlalchemy.orm import Session
+from sqlalchemy import func, select
 
 from app.repositories.attendance_repository import AttendanceRepository
 from app.schemas.attendance import (
@@ -219,3 +220,37 @@ class AttendanceService:
         ).order_by(
             SubscriptionModel.end_date.desc()
         ).first()
+
+    @staticmethod
+    def get_attendance_count_since_subscription(
+            db: Session,
+            client_id: UUID
+    ) -> int:
+        """
+        Obtener el conteo total de asistencias desde el inicio de la suscripción actual.
+        
+        Args:
+            db: Sesión de BD
+            client_id: ID del cliente
+            
+        Returns:
+            Número total de asistencias desde el inicio de la suscripción actual (0 si no hay suscripción)
+        """
+        from app.db.models import AttendanceModel
+        
+        # Obtener suscripción activa
+        subscription = AttendanceService._get_active_subscription(db, client_id)
+        
+        if not subscription:
+            return 0
+        
+        # Contar asistencias desde el inicio de la suscripción
+        count_stmt = (
+            select(func.count(AttendanceModel.id)).where(
+                AttendanceModel.client_id == client_id,
+                AttendanceModel.check_in >= subscription.start_date,
+            )
+        )
+        attendance_count = db.execute(count_stmt).scalar() or 0
+        
+        return attendance_count

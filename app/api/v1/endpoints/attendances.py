@@ -193,12 +193,19 @@ def check_in_with_face(
         }
     )
 
+    # 4. Calculate total attendances since subscription start
+    total_attendances = AttendanceService.get_attendance_count_since_subscription(
+        db=db,
+        client_id=client_id
+    )
+
     return CheckInResponse(
         success=True,
-        message="Welcome to the gym",
+        message="Bienvenido al gimnasio",
         can_enter=True,
         attendance=attendance,
-        client_info=details
+        client_info=details,
+        total_attendances=total_attendances
     )
 
 

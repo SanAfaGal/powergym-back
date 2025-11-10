@@ -67,6 +67,10 @@ class CheckInResponse(BaseModel):
         None,
         description="Razón de denegación si aplica"
     )
+    total_attendances: Optional[int] = Field(
+        None,
+        description="Total de asistencias desde el inicio de la suscripción actual"
+    )
 
 
 class ValidateAccessResponse(BaseModel):

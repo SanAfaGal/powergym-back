@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import AttendanceModel, ClientModel
-from app.utils.timezone import get_date_range_utc
+from app.utils.timezone import get_date_range_utc, TIMEZONE
 
 
 class AttendanceRepository:
@@ -122,24 +122,30 @@ class AttendanceRepository:
     ) -> Optional[AttendanceModel]:
         """
         Obtener la asistencia del cliente para el día especificado.
+        
+        IMPORTANTE: Usa la hora de Colombia (America/Bogota) para determinar el "día actual".
+        La base de datos almacena en UTC, pero la validación se hace según el día en Colombia.
 
         Args:
             db: Sesión de base de datos
             client_id: ID del cliente
-            check_date: Fecha a buscar (por defecto hoy)
+            check_date: Fecha a buscar (por defecto hoy en hora de Colombia)
 
         Returns:
             AttendanceModel si existe, None en caso contrario
         """
+        # Si no se proporciona fecha, usar la fecha actual en hora de Colombia
         if check_date is None:
-            check_date = datetime.now()
+            # Obtener la fecha/hora actual en Colombia
+            colombia_now = datetime.now(TIMEZONE)
+            check_date = colombia_now
+        else:
+            # Si se proporciona una fecha sin timezone, asumir que es hora de Colombia
+            if check_date.tzinfo is None:
+                check_date = TIMEZONE.localize(check_date)
 
-        # ✅ Convert local date to UTC range
+        # Convertir el día local (Colombia) a rango UTC para consultar en la BD
         day_start_utc, day_end_utc = get_date_range_utc(check_date)
-
-        print(check_date.isoformat())
-        print("Day Start UTC: " + day_start_utc.isoformat())
-        print("Day End UTC: " + day_end_utc.isoformat())
 
         return db.query(AttendanceModel).filter(
             AttendanceModel.client_id == client_id,
