@@ -1,0 +1,64 @@
+name: Expire Subscriptions
+
+on:
+  schedule:
+    # Run daily at 00:00 Bogotá time (UTC-5)
+    # GitHub Actions uses UTC, so 00:00 Bogotá = 05:00 UTC
+    - cron: '0 5 * * *'
+  workflow_dispatch:  # Allows manual execution from GitHub interface
+
+jobs:
+  expire-subscriptions:
+    runs-on: ubuntu-latest
+    name: Expire expired subscriptions
+    
+    steps:
+      - name: Expire subscriptions
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+        run: |
+          echo "🚀 Starting subscription expiration..."
+          echo "📅 Date/Time (UTC): $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "📅 Date/Time (Bogotá): $(TZ='America/Bogota' date '+%Y-%m-%d %H:%M:%S %Z')"
+          
+          # Verify that secrets are configured
+          if [ -z "$API_BASE_URL" ]; then
+            echo "❌ Error: API_BASE_URL is not configured in secrets"
+            exit 1
+          fi
+          
+          if [ -z "$API_TOKEN" ]; then
+            echo "❌ Error: API_TOKEN is not configured in secrets"
+            exit 1
+          fi
+          
+          # Build the complete endpoint URL
+          ENDPOINT_URL="${API_BASE_URL}/api/v1/subscriptions/expire"
+          
+          echo "🔗 Endpoint: $ENDPOINT_URL"
+          
+          # Make POST request
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$ENDPOINT_URL" \
+            -H "Authorization: Bearer $API_TOKEN" \
+            -H "Content-Type: application/json")
+          
+          # Separate response body and HTTP code
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "📊 HTTP Code: $HTTP_CODE"
+          echo "📄 Response: $BODY"
+          
+          # Verify if the request was successful
+          if [ "$HTTP_CODE" -eq 200 ]; then
+            echo "✅ Subscriptions expired successfully"
+            echo "$BODY" | jq '.' 2>/dev/null || echo "$BODY"
+          else
+            echo "❌ Error expiring subscriptions. HTTP Code: $HTTP_CODE"
+            echo "Server response: $BODY"
+            exit 1
+          fi
+          
+          echo "✨ Process completed"
+
