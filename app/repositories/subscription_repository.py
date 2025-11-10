@@ -313,20 +313,37 @@ class SubscriptionRepository:
     def get_all(
             db: Session,
             limit: int = 100,
-            offset: int = 0
+            offset: int = 0,
+            status: Optional[SubscriptionStatusEnum] = None,
+            client_id: Optional[UUID] = None
     ) -> List[SubscriptionModel]:
         """
-        Get all subscriptions with pagination.
+        Get all subscriptions with pagination and optional filters.
 
         Args:
             db: Database session
             limit: Maximum number of results
             offset: Number of results to skip
+            status: Optional filter by subscription status
+            client_id: Optional filter by client ID
 
         Returns:
             List[SubscriptionModel]: List of subscriptions
         """
-        return db.query(SubscriptionModel).order_by(
+        from sqlalchemy.orm import joinedload
+        
+        query = db.query(SubscriptionModel).options(
+            joinedload(SubscriptionModel.client),
+            joinedload(SubscriptionModel.plan)
+        )
+        
+        if status is not None:
+            query = query.filter(SubscriptionModel.status == status)
+        
+        if client_id is not None:
+            query = query.filter(SubscriptionModel.client_id == client_id)
+        
+        return query.order_by(
             desc(SubscriptionModel.created_at)
         ).limit(limit).offset(offset).all()
 

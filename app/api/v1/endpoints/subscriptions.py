@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.orm import Session
 from uuid import UUID
 from typing import List, Optional
@@ -241,3 +241,95 @@ def activate_subscriptions(
         execution_time=now_bogota.isoformat(),
         reference_date=now_bogota.date().isoformat()
     )
+
+
+# IMPORTANT: This route must be defined BEFORE /{subscription_id} to avoid route conflicts
+@subscriptions_router.get(
+    "/",
+    response_model=List[Subscription],
+    summary="Get all subscriptions",
+    description="Get all subscriptions across all clients with optional filters"
+)
+def get_all_subscriptions(
+        status: Optional[str] = Query(None, description="Filter by subscription status (active, expired, pending_payment, canceled, scheduled)"),
+        client_id: Optional[UUID] = Query(None, description="Filter by specific client ID"),
+        limit: int = Query(100, ge=1, le=500, description="Maximum number of results"),
+        offset: int = Query(0, ge=0, description="Number of results to skip for pagination"),
+        current_user: User = Depends(get_current_active_user),
+        db: Session = Depends(get_db)
+):
+    """
+    Get all subscriptions with optional filters.
+    
+    **Parameters:**
+    - `status`: Filter by subscription status (active, expired, pending_payment, canceled, scheduled)
+    - `client_id`: Filter by specific client ID
+    - `limit`: Maximum number of results (default: 100, max: 500)
+    - `offset`: Number of results to skip for pagination (default: 0)
+    
+    **Returns:**
+    List of subscriptions with client and plan information included.
+    """
+    from app.db.models import SubscriptionStatusEnum
+    from fastapi import HTTPException
+    
+    # Parse status if provided
+    status_enum = None
+    if status:
+        try:
+            status_enum = SubscriptionStatusEnum(status.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status: {status}. Must be one of: active, expired, pending_payment, canceled, scheduled"
+            )
+    
+    subscriptions = SubscriptionService.get_all_subscriptions(
+        db=db,
+        limit=limit,
+        offset=offset,
+        status=status_enum,
+        client_id=client_id
+    )
+    
+    return subscriptions
+
+
+@subscriptions_router.get(
+    "/{subscription_id}",
+    response_model=Subscription,
+    summary="Get subscription by ID",
+    description="Get a specific subscription by its ID"
+)
+def get_subscription_by_id(
+        subscription_id: UUID,
+        current_user: User = Depends(get_current_active_user),
+        db: Session = Depends(get_db)
+):
+    """
+    Get a subscription by its ID.
+    
+    **Parameters:**
+    - `subscription_id`: Subscription UUID
+    
+    **Returns:**
+    Subscription details with client and plan information included.
+    """
+    from app.repositories.subscription_repository import SubscriptionRepository
+    from app.db.models import SubscriptionModel
+    from sqlalchemy.orm import joinedload
+    from fastapi import HTTPException
+    
+    # Get subscription with client and plan relationships
+    subscription_model = db.query(SubscriptionModel).options(
+        joinedload(SubscriptionModel.client),
+        joinedload(SubscriptionModel.plan)
+    ).filter(SubscriptionModel.id == subscription_id).first()
+    
+    if not subscription_model:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Subscription {subscription_id} not found"
+        )
+    
+    return Subscription.from_orm(subscription_model)

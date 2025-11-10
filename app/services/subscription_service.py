@@ -118,6 +118,24 @@ class SubscriptionService:
         return [Subscription.from_orm(sub) for sub in subscription_models]
 
     @staticmethod
+    def get_all_subscriptions(
+            db: Session,
+            limit: int = 100,
+            offset: int = 0,
+            status: Optional[SubscriptionStatusEnum] = None,
+            client_id: Optional[UUID] = None
+    ) -> List[Subscription]:
+        """Get all subscriptions with optional filters"""
+        subscription_models = SubscriptionRepository.get_all(
+            db, 
+            limit=limit, 
+            offset=offset,
+            status=status,
+            client_id=client_id
+        )
+        return [Subscription.from_orm(sub) for sub in subscription_models]
+
+    @staticmethod
     def renew_subscription(
             db: Session,
             renewal_data: SubscriptionRenew
