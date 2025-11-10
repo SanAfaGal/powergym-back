@@ -1,27 +1,4 @@
-from datetime import datetime, timedelta, date, time
-from typing import Optional
-
-
-class DateTimeUtil:
-    """Utilidades para manejo de fechas."""
-
-    @staticmethod
-    def get_today_range() -> tuple[datetime, datetime]:
-        """Obtener inicio y fin del día de hoy."""
-        today = date.today()
-        start = datetime.combine(today, time.min)
-        end = datetime.combine(today, time.max)
-        return start, end
-
-    @staticmethod
-    def is_valid_date_range(
-            start_date: Optional[datetime],
-            end_date: Optional[datetime]
-    ) -> bool:
-        """Validar que start_date sea menor que end_date."""
-        if not start_date or not end_date:
-            return True
-        return start_date <= end_date
+from datetime import datetime
 
 
 class AccessValidationUtil:

@@ -12,13 +12,6 @@ def to_local(utc_dt: datetime) -> datetime:
     return utc_dt.astimezone(TIMEZONE)
 
 
-def to_utc(local_dt: datetime) -> datetime:
-    """Convierte local a UTC"""
-    if local_dt.tzinfo is None:
-        local_dt = TIMEZONE.localize(local_dt)
-    return local_dt.astimezone(timezone.utc)
-
-
 def get_date_range_utc(local_date: datetime) -> tuple[datetime, datetime]:
     """
     Convierte un día local a rango UTC.

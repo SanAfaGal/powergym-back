@@ -8,7 +8,6 @@ the application, such as formatting, validation, and data transformation utiliti
 from .formatters import (
     format_currency,
     format_client_name,
-    format_datetime,
     format_time,
     format_quantity,
 )
@@ -16,7 +15,6 @@ from .formatters import (
 __all__ = [
     "format_currency",
     "format_client_name",
-    "format_datetime",
     "format_time",
     "format_quantity",
 ]

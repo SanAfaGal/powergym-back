@@ -2,6 +2,7 @@ import datetime
 import warnings
 warnings.filterwarnings('ignore', message='pkg_resources is deprecated')
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -13,19 +14,25 @@ from app.middleware.logging import StructuredLoggingMiddleware
 from app.middleware.error_handler import setup_exception_handlers
 from app.middleware.rate_limit import setup_rate_limiting
 
-app = FastAPI(
-    title=settings.PROJECT_NAME,
-    version=settings.VERSION,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
-)
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
     db = SessionLocal()
     try:
         UserService.initialize_super_admin(db)
     finally:
         db.close()
+    yield
+    # Shutdown (if needed in the future)
+
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    version=settings.VERSION,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan
+)
 
 app.add_middleware(StructuredLoggingMiddleware)
 

@@ -26,7 +26,6 @@ A comprehensive gym management system backend with facial recognition, member ma
 - **FastAPI** - Modern, fast web framework for building APIs
 - **Python 3.10+** - Programming language
 - **PostgreSQL 18+** - Relational database with pgvector extension for vector operations
-- **Redis** - Caching and session management
 - **Alembic** - Database migration tool
 
 ### Key Libraries
@@ -41,7 +40,6 @@ A comprehensive gym management system backend with facial recognition, member ma
 
 - Python 3.10 or higher
 - PostgreSQL 18+ with pgvector extension
-- Redis (optional, for caching)
 - Docker & Docker Compose (optional, for containerized deployment)
 
 ## Quick Start
@@ -72,7 +70,6 @@ Create a `.env` file in the root directory or copy from `docker-compose.example.
 ```env
 # Database
 DATABASE_URL=postgresql://user:password@localhost:5432/powergym
-ASYNC_DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/powergym
 POSTGRES_USER=your_user
 POSTGRES_PASSWORD=your_password
 POSTGRES_DB=powergym
@@ -83,8 +80,8 @@ POSTGRES_PORT=5432
 SECRET_KEY=your-secret-key-here
 BIOMETRIC_ENCRYPTION_KEY=your-encryption-key-here
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-REFRESH_TOKEN_EXPIRE_DAYS=7
+ACCESS_TOKEN_EXPIRE_MINUTES=300  # 5 horas
+REFRESH_TOKEN_EXPIRE_HOURS=12  # 12 horas (sesión máxima)
 
 # Super Admin (created on startup)
 SUPER_ADMIN_USERNAME=admin
@@ -99,9 +96,6 @@ FACE_RECOGNITION_TOLERANCE=0.6
 
 # CORS
 ALLOWED_ORIGINS_STR=http://localhost:5173
-
-# Redis (optional)
-REDIS_URL=redis://localhost:6379
 
 # Telegram (optional)
 TELEGRAM_BOT_TOKEN=your-bot-token
@@ -199,6 +193,56 @@ cp docker-compose.example.yml docker-compose.yml
 # Then start services
 docker-compose up -d
 ```
+
+### Deploy from Production
+
+To apply changes from production to your Docker server, use the deploy script:
+
+```bash
+./deploy.sh
+```
+
+**Options:**
+- `--no-cache`: Force rebuild without using Docker cache (slower but ensures clean build)
+- `--branch BRANCH`: Specify branch to pull from (default: current branch)
+
+**Examples:**
+```bash
+# Standard deploy (uses cache for faster builds)
+./deploy.sh
+
+# Deploy with clean rebuild (no cache)
+./deploy.sh --no-cache
+
+# Deploy from specific branch
+./deploy.sh --branch main
+```
+
+The script automatically:
+1. Verifies prerequisites (git, docker, docker-compose)
+2. Fetches the latest changes from the repository (`git pull`)
+3. Stops the current containers gracefully
+4. Rebuilds the backend image (using Docker cache by default for speed)
+5. Restarts the containers
+6. Shows the backend logs
+
+**Note:** Make sure the script has execute permissions:
+```bash
+chmod +x deploy.sh
+```
+
+**Alternative script (rebuild only):**
+If you already have local changes and only need to rebuild containers without pulling:
+
+```bash
+# Standard rebuild (uses cache)
+./rebuild.sh
+
+# Rebuild without cache
+./rebuild.sh --no-cache
+```
+
+This script skips the `git pull` step and only rebuilds and restarts the containers. It's useful for testing local changes quickly.
 
 ### API Endpoints
 
@@ -323,6 +367,22 @@ The `docker-compose.example.yml` includes:
 - `postgres_data`: Persistent database storage
 - `./logs`: Application logs
 - `./uploads`: User-uploaded files
+
+## Automated Tasks
+
+### Expiración Automática de Subscripciones
+
+El sistema incluye un workflow de GitHub Actions que expira automáticamente las subscripciones que han finalizado. Este workflow se ejecuta diariamente a las 00:00 hora de Bogotá.
+
+**Configuración:**
+1. Ve a `.github/workflows/README.md` para instrucciones detalladas
+2. Configura los secrets `API_BASE_URL` y `API_TOKEN` en GitHub
+3. El workflow se ejecutará automáticamente según el schedule configurado
+
+**Endpoint:**
+- `POST /api/v1/subscriptions/expire` - Expira todas las subscripciones que han finalizado
+
+Para más información, consulta la [documentación completa de GitHub Actions](.github/workflows/README.md).
 
 ## Contributing
 

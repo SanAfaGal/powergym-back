@@ -59,24 +59,6 @@ def format_client_name(
     return " ".join(parts)
 
 
-def format_datetime(dt: datetime, format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
-    """
-    Format a datetime object to a string.
-
-    Args:
-        dt: Datetime object to format
-        format_str: Format string (default: "%Y-%m-%d %H:%M:%S")
-
-    Returns:
-        Formatted datetime string
-
-    Example:
-        >>> format_datetime(datetime(2024, 1, 15, 14, 30, 0))
-        "2024-01-15 14:30:00"
-    """
-    return dt.strftime(format_str)
-
-
 def format_time(dt: datetime, format_str: str = "%H:%M:%S") -> str:
     """
     Format a datetime object to time string.
