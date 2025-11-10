@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import and_
 from uuid import UUID
 from datetime import datetime
 from app.schemas.subscription import Subscription, SubscriptionCreate, SubscriptionRenew, SubscriptionCancel
@@ -127,10 +128,13 @@ class SubscriptionService:
         Logic:
         - Takes the current subscription's end_date and adds 1 day as start_date
         - Uses provided plan_id, or same plan if not specified
-        - New subscription always starts as PENDING_PAYMENT
+        - Status is determined by start date:
+          * If start_date is in the future: SCHEDULED
+          * If start_date is today or in the past: PENDING_PAYMENT
         """
-        from datetime import timedelta
+        from datetime import timedelta, date
         from decimal import Decimal
+        from app.utils.timezone import TIMEZONE
 
         old_sub = SubscriptionRepository.get_by_id(db, renewal_data.subscription_id)
         if not old_sub:
@@ -145,6 +149,18 @@ class SubscriptionService:
         # Renewal always starts the day after current subscription ends
         renewal_start = old_sub.end_date + timedelta(days=1)
         end_date = SubscriptionCalculator.calculate_end_date(renewal_start, plan)
+
+        # Determine status based on start date
+        # Get today's date in Bogotá timezone
+        from datetime import datetime as dt
+        today_bogota = dt.now(TIMEZONE).date()
+        
+        # If renewal starts in the future, it's SCHEDULED
+        # Otherwise, it's PENDING_PAYMENT
+        if renewal_start > today_bogota:
+            initial_status = SubscriptionStatusEnum.SCHEDULED
+        else:
+            initial_status = SubscriptionStatusEnum.PENDING_PAYMENT
 
         # Calculate final price if discount is provided
         final_price = None
@@ -168,7 +184,7 @@ class SubscriptionService:
             plan_id=plan_id,
             start_date=renewal_start,
             end_date=end_date,
-            status=SubscriptionStatusEnum.PENDING_PAYMENT,
+            status=initial_status,
             final_price=final_price
         )
         
@@ -186,12 +202,71 @@ class SubscriptionService:
             db: Session,
             cancel_data: SubscriptionCancel
     ) -> Subscription:
-        """Cancel a subscription"""
+        """
+        Cancel a subscription.
+        
+        If the canceled subscription was ACTIVE and there's a SCHEDULED subscription
+        for the same client, update the SCHEDULED subscription status:
+        - If start_date <= today: change to PENDING_PAYMENT (can start now)
+        - If start_date > today: keep as SCHEDULED (still in the future)
+        """
+        from datetime import datetime as dt
+        from app.utils.timezone import TIMEZONE
+        
+        # Get the subscription before canceling to check its status and client_id
+        subscription_to_cancel = SubscriptionRepository.get_by_id(db, cancel_data.subscription_id)
+        if not subscription_to_cancel:
+            raise ValueError(f"Subscription {cancel_data.subscription_id} not found")
+        
+        was_active = subscription_to_cancel.status == SubscriptionStatusEnum.ACTIVE
+        client_id = subscription_to_cancel.client_id
+        
+        # If we're canceling an active subscription, check for scheduled renewals first
+        scheduled_to_update = []
+        if was_active:
+            # Get today's date in Bogotá timezone
+            today_bogota = dt.now(TIMEZONE).date()
+            
+            # Find SCHEDULED subscriptions for this client
+            scheduled_subscriptions = db.query(SubscriptionModel).filter(
+                and_(
+                    SubscriptionModel.client_id == client_id,
+                    SubscriptionModel.status == SubscriptionStatusEnum.SCHEDULED
+                )
+            ).all()
+            
+            # Mark SCHEDULED subscriptions that can now start
+            for scheduled_sub in scheduled_subscriptions:
+                # If the scheduled subscription's start date is today or in the past,
+                # change it to PENDING_PAYMENT so it can start
+                if scheduled_sub.start_date <= today_bogota:
+                    scheduled_sub.status = SubscriptionStatusEnum.PENDING_PAYMENT
+                    scheduled_to_update.append(scheduled_sub)
+                    logger.info(
+                        f"Will update SCHEDULED subscription {scheduled_sub.id} to PENDING_PAYMENT "
+                        f"after canceling active subscription {cancel_data.subscription_id}"
+                    )
+        
+        # Cancel the subscription (this will commit)
         subscription_model = SubscriptionRepository.cancel(
             db=db,
             subscription_id=cancel_data.subscription_id,
             cancellation_reason=cancel_data.cancellation_reason
         )
+        
+        # If we updated scheduled subscriptions, commit those changes
+        # (Note: cancel already committed, but we need to commit the scheduled updates)
+        if scheduled_to_update:
+            try:
+                db.commit()
+                # Refresh all updated subscriptions
+                for scheduled_sub in scheduled_to_update:
+                    db.refresh(scheduled_sub)
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Error updating scheduled subscriptions after cancellation: {str(e)}")
+                # Don't fail the cancellation if scheduled update fails
+                raise
 
         return Subscription.from_orm(subscription_model)
 
