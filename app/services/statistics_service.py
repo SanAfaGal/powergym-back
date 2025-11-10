@@ -450,7 +450,8 @@ class StatisticsService:
             .filter(
                 and_(
                     ProductModel.is_active == True,
-                    ProductModel.available_quantity <= ProductModel.min_stock,
+                    ProductModel.available_quantity > 0,
+                    ProductModel.available_quantity < ProductModel.min_stock,
                 )
             )
             .scalar()
