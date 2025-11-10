@@ -1,0 +1,81 @@
+name: Activate Subscriptions
+
+on:
+  schedule:
+    # Run daily at 00:05 Bogotá time (UTC-5)
+    # GitHub Actions uses UTC, so 00:05 Bogotá = 05:05 UTC
+    # This runs 5 minutes after the expire-subscriptions workflow (05:00 UTC)
+    - cron: '5 5 * * *'
+  workflow_dispatch:  # Allows manual execution from GitHub interface
+
+jobs:
+  activate-subscriptions:
+    runs-on: ubuntu-latest
+    name: Activate scheduled subscriptions
+    
+    steps:
+      - name: Activate subscriptions
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+        run: |
+          echo "🚀 Starting subscription activation..."
+          echo "📅 Date/Time (UTC): $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "📅 Date/Time (Bogotá): $(TZ='America/Bogota' date '+%Y-%m-%d %H:%M:%S %Z')"
+          
+          # Verify that secrets are configured
+          if [ -z "$API_BASE_URL" ]; then
+            echo "❌ Error: API_BASE_URL is not configured in secrets"
+            exit 1
+          fi
+          
+          if [ -z "$API_TOKEN" ]; then
+            echo "❌ Error: API_TOKEN is not configured in secrets"
+            exit 1
+          fi
+          
+          # Remove trailing slash from API_BASE_URL if present
+          API_BASE_URL=$(echo "$API_BASE_URL" | sed 's:/*$::')
+          
+          # Build the complete endpoint URL
+          ENDPOINT_URL="${API_BASE_URL}/api/v1/subscriptions/activate"
+          
+          echo "🔗 API Base URL: $API_BASE_URL"
+          echo "🔗 Endpoint URL: $ENDPOINT_URL"
+          echo "🔑 Token (first 20 chars): ${API_TOKEN:0:20}..."
+          
+          # Debug: Show what curl will execute (without exposing full token)
+          echo "📋 Curl command (sanitized):"
+          echo "   curl -X POST \"$ENDPOINT_URL\" \\"
+          echo "     -H \"Authorization: Bearer [TOKEN]\" \\"
+          echo "     -H \"Content-Type: application/json\""
+          
+          # Make POST request with verbose output for debugging
+          # Write response body to file and HTTP code separately
+          HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/response_body.txt -X POST "$ENDPOINT_URL" \
+            -H "Authorization: Bearer $API_TOKEN" \
+            -H "Content-Type: application/json" \
+            -v 2> /tmp/curl_verbose.log)
+          
+          # Read response body from file
+          BODY=$(cat /tmp/response_body.txt)
+          
+          # Show verbose output for debugging
+          echo "📋 Curl verbose output:"
+          grep -E "^< |^> |^\* " /tmp/curl_verbose.log | head -30 || echo "No verbose output available"
+          
+          echo "📊 HTTP Code: $HTTP_CODE"
+          echo "📄 Response Body: $BODY"
+          
+          # Verify if the request was successful
+          if [ "$HTTP_CODE" -eq 200 ]; then
+            echo "✅ Subscriptions activated successfully"
+            echo "$BODY" | jq '.' 2>/dev/null || echo "$BODY"
+          else
+            echo "❌ Error activating subscriptions. HTTP Code: $HTTP_CODE"
+            echo "Server response: $BODY"
+            exit 1
+          fi
+          
+          echo "✨ Process completed"
+

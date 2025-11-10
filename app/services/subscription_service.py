@@ -306,3 +306,58 @@ class SubscriptionService:
         )
 
         return expired_count
+
+    @staticmethod
+    def activate_scheduled_subscriptions(db: Session) -> int:
+        """
+        Activate all scheduled subscriptions that have reached their start_date.
+
+        Uses the current date in America/Bogota timezone for comparison.
+        Only subscriptions with SCHEDULED status are activated.
+        Only activates subscriptions for clients that do NOT have an active subscription
+        (to respect the constraint of one active subscription per client).
+
+        Args:
+            db: Database session
+
+        Returns:
+            int: Number of subscriptions activated
+        """
+        # Get scheduled subscriptions ready to activate
+        ready_subscriptions = SubscriptionRepository.get_ready_to_activate(db)
+        
+        if not ready_subscriptions:
+            logger.info("No scheduled subscriptions ready to activate")
+            return 0
+
+        # Filter subscriptions: only activate if client doesn't have an active subscription
+        subscriptions_to_activate = []
+        for sub in ready_subscriptions:
+            active_subs = SubscriptionRepository.get_active_by_client(db, sub.client_id)
+            if not active_subs:
+                subscriptions_to_activate.append(sub)
+            else:
+                logger.info(
+                    f"Skipping subscription {sub.id} for client {sub.client_id}: "
+                    f"client already has an active subscription"
+                )
+
+        if not subscriptions_to_activate:
+            logger.info("No scheduled subscriptions can be activated (all clients have active subscriptions)")
+            return 0
+
+        # Extract subscription IDs
+        subscription_ids = [sub.id for sub in subscriptions_to_activate]
+        
+        # Batch update to ACTIVE status
+        activated_count = SubscriptionRepository.activate_subscriptions_batch(
+            db=db,
+            subscription_ids=subscription_ids
+        )
+
+        logger.info(
+            f"Activated {activated_count} scheduled subscription(s). "
+            f"Reference date (Bogotá): {datetime.now(TIMEZONE).date()}"
+        )
+
+        return activated_count

@@ -448,3 +448,64 @@ class SubscriptionRepository:
             db.rollback()
             logger.error(f"Error expiring subscriptions in batch: {str(e)}")
             raise
+
+    @staticmethod
+    def get_ready_to_activate(db: Session) -> List[SubscriptionModel]:
+        """
+        Get scheduled subscriptions ready to activate (start_date has arrived).
+
+        Uses the current date in America/Bogota timezone for comparison.
+        Useful for batch updating subscriptions to ACTIVE status.
+
+        Args:
+            db: Database session
+
+        Returns:
+            List[SubscriptionModel]: List of scheduled subscriptions ready to activate
+        """
+        from datetime import datetime
+        # Get current date in Bogotá timezone
+        now_bogota = datetime.now(TIMEZONE)
+        today_bogota = now_bogota.date()
+        
+        return db.query(SubscriptionModel).filter(
+            and_(
+                SubscriptionModel.status == SubscriptionStatusEnum.SCHEDULED,
+                SubscriptionModel.start_date <= today_bogota
+            )
+        ).all()
+
+    @staticmethod
+    def activate_subscriptions_batch(
+            db: Session,
+            subscription_ids: List[UUID]
+    ) -> int:
+        """
+        Batch update subscriptions to ACTIVE status.
+
+        Args:
+            db: Database session
+            subscription_ids: List of subscription UUIDs to activate
+
+        Returns:
+            int: Number of subscriptions updated
+        """
+        if not subscription_ids:
+            return 0
+
+        try:
+            updated_count = db.query(SubscriptionModel).filter(
+                SubscriptionModel.id.in_(subscription_ids)
+            ).update(
+                {SubscriptionModel.status: SubscriptionStatusEnum.ACTIVE},
+                synchronize_session=False
+            )
+            db.commit()
+
+            logger.info(f"Activated {updated_count} subscriptions in batch")
+            return updated_count
+
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error activating subscriptions in batch: {str(e)}")
+            raise

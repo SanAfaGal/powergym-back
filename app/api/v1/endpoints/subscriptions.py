@@ -32,6 +32,13 @@ class ExpireSubscriptionsResponse(BaseModel):
     reference_date: str
 
 
+class ActivateSubscriptionsResponse(BaseModel):
+    """Response schema for subscription activation endpoint"""
+    activated_count: int
+    execution_time: str
+    reference_date: str
+
+
 @router.post(
     "/",
     response_model=Subscription,
@@ -200,6 +207,37 @@ def expire_subscriptions(
     
     return ExpireSubscriptionsResponse(
         expired_count=expired_count,
+        execution_time=now_bogota.isoformat(),
+        reference_date=now_bogota.date().isoformat()
+    )
+
+
+@subscriptions_router.post(
+    "/activate",
+    response_model=ActivateSubscriptionsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Activate scheduled subscriptions",
+    description="Activate all scheduled subscriptions that have reached their start_date. Uses America/Bogota timezone for date comparison."
+)
+def activate_subscriptions(
+        current_user: User = Depends(get_current_active_user),
+        db: Session = Depends(get_db)
+):
+    """
+    Activate all scheduled subscriptions that have reached their start_date.
+    
+    This endpoint should be called daily (e.g., via cron) to automatically
+    activate scheduled subscriptions. Uses the current date in America/Bogota timezone.
+    Only activates subscriptions for clients that do not have an active subscription.
+    """
+    # Execute activation
+    activated_count = SubscriptionService.activate_scheduled_subscriptions(db)
+    
+    # Get current time in Bogotá timezone
+    now_bogota = datetime.now(TIMEZONE)
+    
+    return ActivateSubscriptionsResponse(
+        activated_count=activated_count,
         execution_time=now_bogota.isoformat(),
         reference_date=now_bogota.date().isoformat()
     )
