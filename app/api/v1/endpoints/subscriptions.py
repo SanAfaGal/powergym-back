@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 from uuid import UUID
 from typing import List, Optional
+from datetime import datetime
+from pydantic import BaseModel
 
 from app.schemas.subscription import (
     Subscription,
@@ -15,8 +17,19 @@ from app.schemas.user import User
 from app.db.session import get_db
 from app.utils.subscription.schema_builder import SubscriptionSchemaBuilder
 from app.utils.subscription.validators import SubscriptionValidator
+from app.utils.timezone import TIMEZONE
 
 router = APIRouter(prefix="/clients/{client_id}/subscriptions", tags=["subscriptions"])
+
+# Separate router for subscription management endpoints (not tied to a specific client)
+subscriptions_router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
+
+
+class ExpireSubscriptionsResponse(BaseModel):
+    """Response schema for subscription expiration endpoint"""
+    expired_count: int
+    execution_time: str
+    reference_date: str
 
 
 @router.post(
@@ -160,3 +173,33 @@ def cancel_subscription(
     canceled_subscription = SubscriptionService.cancel_subscription(db, cancel_data)
 
     return canceled_subscription
+
+
+@subscriptions_router.post(
+    "/expire",
+    response_model=ExpireSubscriptionsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Expire subscriptions",
+    description="Expire all subscriptions that have passed their end_date. Uses America/Bogota timezone for date comparison."
+)
+def expire_subscriptions(
+        current_user: User = Depends(get_current_active_user),
+        db: Session = Depends(get_db)
+):
+    """
+    Expire all subscriptions that have passed their end_date.
+    
+    This endpoint should be called daily (e.g., via cron) to automatically
+    expire subscriptions. Uses the current date in America/Bogota timezone.
+    """
+    # Execute expiration
+    expired_count = SubscriptionService.expire_subscriptions(db)
+    
+    # Get current time in Bogotá timezone
+    now_bogota = datetime.now(TIMEZONE)
+    
+    return ExpireSubscriptionsResponse(
+        expired_count=expired_count,
+        execution_time=now_bogota.isoformat(),
+        reference_date=now_bogota.date().isoformat()
+    )

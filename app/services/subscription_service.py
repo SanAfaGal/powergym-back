@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session, joinedload
 from uuid import UUID
+from datetime import datetime
 from app.schemas.subscription import Subscription, SubscriptionCreate, SubscriptionRenew, SubscriptionCancel
 from app.repositories.subscription_repository import SubscriptionRepository
 from app.repositories.plan_repository import PlanRepository
@@ -8,6 +9,7 @@ from app.utils.subscription.calculator import SubscriptionCalculator
 from app.utils.common.formatters import format_client_name
 from app.services.notification_service import NotificationService
 from app.core.async_processing import run_async_in_background
+from app.utils.timezone import TIMEZONE
 from typing import List, Optional
 import logging
 
@@ -192,3 +194,40 @@ class SubscriptionService:
         )
 
         return Subscription.from_orm(subscription_model)
+
+    @staticmethod
+    def expire_subscriptions(db: Session) -> int:
+        """
+        Expire all subscriptions that have passed their end_date.
+
+        Uses the current date in America/Bogota timezone for comparison.
+        Only subscriptions with ACTIVE status are expired.
+
+        Args:
+            db: Database session
+
+        Returns:
+            int: Number of subscriptions expired
+        """
+        # Get expired subscriptions
+        expired_subscriptions = SubscriptionRepository.get_expired(db)
+        
+        if not expired_subscriptions:
+            logger.info("No expired subscriptions found")
+            return 0
+
+        # Extract subscription IDs
+        subscription_ids = [sub.id for sub in expired_subscriptions]
+        
+        # Batch update to EXPIRED status
+        expired_count = SubscriptionRepository.expire_subscriptions_batch(
+            db=db,
+            subscription_ids=subscription_ids
+        )
+
+        logger.info(
+            f"Expired {expired_count} subscription(s). "
+            f"Reference date (Bogotá): {datetime.now(TIMEZONE).date()}"
+        )
+
+        return expired_count

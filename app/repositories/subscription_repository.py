@@ -7,6 +7,7 @@ from datetime import date
 from typing import List, Optional
 from decimal import Decimal
 from app.db.models import SubscriptionModel, SubscriptionStatusEnum
+from app.utils.timezone import TIMEZONE
 import logging
 
 logger = logging.getLogger(__name__)
@@ -392,6 +393,7 @@ class SubscriptionRepository:
         """
         Get expired subscriptions (status still ACTIVE but end_date passed).
 
+        Uses the current date in America/Bogota timezone for comparison.
         Useful for batch updating subscriptions to EXPIRED status.
 
         Args:
@@ -400,9 +402,49 @@ class SubscriptionRepository:
         Returns:
             List[SubscriptionModel]: List of expired subscriptions
         """
+        from datetime import datetime
+        # Get current date in Bogotá timezone
+        now_bogota = datetime.now(TIMEZONE)
+        today_bogota = now_bogota.date()
+        
         return db.query(SubscriptionModel).filter(
             and_(
                 SubscriptionModel.status == SubscriptionStatusEnum.ACTIVE,
-                SubscriptionModel.end_date < date.today()
+                SubscriptionModel.end_date < today_bogota
             )
         ).all()
+
+    @staticmethod
+    def expire_subscriptions_batch(
+            db: Session,
+            subscription_ids: List[UUID]
+    ) -> int:
+        """
+        Batch update subscriptions to EXPIRED status.
+
+        Args:
+            db: Database session
+            subscription_ids: List of subscription UUIDs to expire
+
+        Returns:
+            int: Number of subscriptions updated
+        """
+        if not subscription_ids:
+            return 0
+
+        try:
+            updated_count = db.query(SubscriptionModel).filter(
+                SubscriptionModel.id.in_(subscription_ids)
+            ).update(
+                {SubscriptionModel.status: SubscriptionStatusEnum.EXPIRED},
+                synchronize_session=False
+            )
+            db.commit()
+
+            logger.info(f"Expired {updated_count} subscriptions in batch")
+            return updated_count
+
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error expiring subscriptions in batch: {str(e)}")
+            raise
