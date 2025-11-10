@@ -50,18 +50,14 @@ jobs:
           echo "     -H \"Content-Type: application/json\""
           
           # Make POST request with verbose output for debugging
-          # Use separate files for verbose output and response
-          curl -v -s -w "\n%{http_code}" -X POST "$ENDPOINT_URL" \
+          # Write response body to file and HTTP code separately
+          HTTP_CODE=$(curl -s -w "%{http_code}" -o /tmp/response_body.txt -X POST "$ENDPOINT_URL" \
             -H "Authorization: Bearer $API_TOKEN" \
             -H "Content-Type: application/json" \
-            -o /tmp/response_body.txt \
-            2> /tmp/curl_verbose.log
+            -v 2> /tmp/curl_verbose.log)
           
-          # Extract HTTP code (last line of response)
-          HTTP_CODE=$(tail -n1 /tmp/response_body.txt)
-          
-          # Extract response body (all lines except last)
-          BODY=$(head -n -1 /tmp/response_body.txt)
+          # Read response body from file
+          BODY=$(cat /tmp/response_body.txt)
           
           # Show verbose output for debugging
           echo "📋 Curl verbose output:"
