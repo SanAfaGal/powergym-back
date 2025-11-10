@@ -42,8 +42,7 @@ class Settings(BaseSettings):
     SUPER_ADMIN_FULL_NAME: str = Field(..., description="Initial admin full name")
 
     # ==================== DATABASE ====================
-    DATABASE_URL: str = Field(..., description="Sync database URL")
-    ASYNC_DATABASE_URL: str = Field(..., description="Async database URL")
+    DATABASE_URL: str = Field(..., description="Database URL")
 
     POSTGRES_USER: Optional[str] = Field(None, description="PostgreSQL username")
     POSTGRES_PASSWORD: Optional[str] = Field(None, description="PostgreSQL password")
