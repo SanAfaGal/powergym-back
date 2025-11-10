@@ -33,22 +33,42 @@ jobs:
             exit 1
           fi
           
+          # Remove trailing slash from API_BASE_URL if present
+          API_BASE_URL=$(echo "$API_BASE_URL" | sed 's:/*$::')
+          
           # Build the complete endpoint URL
           ENDPOINT_URL="${API_BASE_URL}/api/v1/subscriptions/expire"
           
-          echo "🔗 Endpoint: $ENDPOINT_URL"
+          echo "🔗 API Base URL: $API_BASE_URL"
+          echo "🔗 Endpoint URL: $ENDPOINT_URL"
+          echo "🔑 Token (first 20 chars): ${API_TOKEN:0:20}..."
           
-          # Make POST request
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$ENDPOINT_URL" \
+          # Debug: Show what curl will execute (without exposing full token)
+          echo "📋 Curl command (sanitized):"
+          echo "   curl -X POST \"$ENDPOINT_URL\" \\"
+          echo "     -H \"Authorization: Bearer [TOKEN]\" \\"
+          echo "     -H \"Content-Type: application/json\""
+          
+          # Make POST request with verbose output for debugging
+          # Use separate files for verbose output and response
+          curl -v -s -w "\n%{http_code}" -X POST "$ENDPOINT_URL" \
             -H "Authorization: Bearer $API_TOKEN" \
-            -H "Content-Type: application/json")
+            -H "Content-Type: application/json" \
+            -o /tmp/response_body.txt \
+            2> /tmp/curl_verbose.log
           
-          # Separate response body and HTTP code
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
+          # Extract HTTP code (last line of response)
+          HTTP_CODE=$(tail -n1 /tmp/response_body.txt)
+          
+          # Extract response body (all lines except last)
+          BODY=$(head -n -1 /tmp/response_body.txt)
+          
+          # Show verbose output for debugging
+          echo "📋 Curl verbose output:"
+          grep -E "^< |^> |^\* " /tmp/curl_verbose.log | head -30 || echo "No verbose output available"
           
           echo "📊 HTTP Code: $HTTP_CODE"
-          echo "📄 Response: $BODY"
+          echo "📄 Response Body: $BODY"
           
           # Verify if the request was successful
           if [ "$HTTP_CODE" -eq 200 ]; then
