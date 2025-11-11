@@ -24,8 +24,15 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
       TZ: ${TZ:-UTC}
-    # Production: Only expose port if needed for external access
-    # Consider removing port mapping and using internal network only
+    # SECURITY: PostgreSQL port exposure
+    # 
+    # IMPORTANT: If your backend connects via Docker network (recommended), you can remove this port mapping
+    # Your DATABASE_URL should use hostname 'postgres': postgresql://user:pass@postgres:5432/dbname
+    #
+    # If you keep the port exposed, configure firewall to restrict access:
+    #   sudo ufw deny 5432  # Block by default
+    #   sudo ufw allow from YOUR_IP to any port 5432  # Allow only your IP
+    #
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
