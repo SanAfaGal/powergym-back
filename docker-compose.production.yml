@@ -82,7 +82,7 @@ services:
       - ./uploads:/app/uploads:rw
       - insightface_models:/root/.insightface/models
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/monitoring/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
