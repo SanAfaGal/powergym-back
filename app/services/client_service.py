@@ -33,6 +33,7 @@ from app.utils.mappers import (
     document_type_schema_to_enum,
     gender_type_schema_to_enum,
 )
+from app.utils.common.formatters import format_client_name
 from app.utils.exceptions import NotFoundError, InternalServerError
 from app.core.constants import ERROR_CLIENT_NOT_FOUND, ERROR_INTERNAL_SERVER
 
@@ -200,6 +201,26 @@ class ClientService:
 
             if client_model:
                 logger.info("Client updated successfully: %s", client_id)
+                
+                # Send Telegram notification in background (non-blocking)
+                try:
+                    run_async_in_background(
+                        NotificationService.send_client_update_notification(
+                            first_name=client_model.first_name,
+                            last_name=client_model.last_name,
+                            dni_number=client_model.dni_number,
+                            middle_name=client_model.middle_name,
+                            second_last_name=client_model.second_last_name
+                        )
+                    )
+                except Exception as e:
+                    # Log error but don't fail the client update
+                    logger.error(
+                        "Error sending client update notification: %s",
+                        str(e),
+                        exc_info=True,
+                    )
+                
                 return model_to_client_schema(client_model)
 
             return None
@@ -225,9 +246,33 @@ class ClientService:
             True if deletion was successful, False otherwise
         """
         try:
+            # Get client info before deletion for notification
+            client_model = ClientRepository.get_by_id(db, client_id)
+            
             result = ClientRepository.delete(db, client_id)
             if result:
                 logger.info("Client deleted successfully: %s", client_id)
+                
+                # Send Telegram notification in background (non-blocking)
+                if client_model:
+                    try:
+                        run_async_in_background(
+                            NotificationService.send_client_delete_notification(
+                                first_name=client_model.first_name,
+                                last_name=client_model.last_name,
+                                dni_number=client_model.dni_number,
+                                middle_name=client_model.middle_name,
+                                second_last_name=client_model.second_last_name
+                            )
+                        )
+                    except Exception as e:
+                        # Log error but don't fail the client deletion
+                        logger.error(
+                            "Error sending client deletion notification: %s",
+                            str(e),
+                            exc_info=True,
+                        )
+            
             return result
 
         except Exception as e:

@@ -6,6 +6,7 @@ It handles authentication, error handling, and logging for all Telegram operatio
 """
 
 import logging
+from typing import Literal
 
 import httpx
 
@@ -13,14 +14,16 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-TELEGRAM_API_URL = "https://api.telegram.org/bot{token}/sendMessage"
-TELEGRAM_API_TIMEOUT = 10.0
+TELEGRAM_API_URL: str = "https://api.telegram.org/bot{token}/sendMessage"
+TELEGRAM_API_TIMEOUT: float = 10.0
+
+ParseMode = Literal["Markdown", "HTML"]
 
 
 async def send_telegram_message(
     chat_id: str,
     message: str,
-    parse_mode: str = "Markdown"
+    parse_mode: ParseMode = "Markdown"
 ) -> bool:
     """
     Send a message to a Telegram chat via Bot API.
@@ -125,7 +128,7 @@ async def send_telegram_message_html(
     Send a message to Telegram using HTML parse mode.
 
     Args:
-        chat_id: Telegram chat ID
+        chat_id: Telegram chat ID (can be a group ID or user ID)
         message: Message text with HTML formatting
 
     Returns:

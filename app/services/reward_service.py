@@ -223,6 +223,37 @@ class RewardService:
 
         logger.info(f"Reward {reward_id} applied to subscription {apply_data.subscription_id}")
 
+        # Send Telegram notification in background
+        try:
+            from app.services.notification_service import NotificationService
+            from app.core.async_processing import run_async_in_background
+            from app.utils.common.formatters import format_client_name
+            from app.repositories.client_repository import ClientRepository
+            
+            # Get client and plan information
+            client = ClientRepository.get_by_id(db, reward.client_id)
+            plan = PlanRepository.get_by_id(db, subscription.plan_id)
+            
+            if client and plan:
+                client_name = format_client_name(
+                    first_name=client.first_name,
+                    last_name=client.last_name,
+                    middle_name=client.middle_name,
+                    second_last_name=client.second_last_name
+                )
+                
+                # Send notification asynchronously (fire and forget)
+                run_async_in_background(
+                    NotificationService.send_reward_redemption_notification(
+                        client_name=client_name,
+                        discount_percentage=Decimal(str(apply_data.discount_percentage)),
+                        subscription_plan=plan.name
+                    )
+                )
+        except Exception as e:
+            # Log error but don't fail the reward application
+            logger.error("Error sending reward redemption notification: %s", str(e), exc_info=True)
+
         return Reward.from_orm(updated_reward)
 
     @staticmethod

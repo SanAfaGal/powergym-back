@@ -79,7 +79,25 @@ class ProductService:
 
         try:
             db_product = self.product_repo.create(product_data)
-            return ProductResponse.model_validate(db_product)
+            product_response = ProductResponse.model_validate(db_product)
+            
+            # Send Telegram notification in background
+            try:
+                from app.services.notification_service import NotificationService
+                from app.core.async_processing import run_async_in_background
+                
+                run_async_in_background(
+                    NotificationService.send_product_create_notification(
+                        product_name=product_response.name,
+                        price=product_response.price,
+                        initial_stock=product_response.available_quantity
+                    )
+                )
+            except Exception as e:
+                # Log error but don't fail the product creation
+                logger.error("Error sending product creation notification: %s", str(e), exc_info=True)
+            
+            return product_response
         except IntegrityError as e:
             self.db.rollback()
             raise ValueError(f"Database integrity error: {str(e)}")
@@ -187,7 +205,24 @@ class ProductService:
 
         try:
             updated_product = self.product_repo.update(product_id, product_data)
-            return ProductResponse.model_validate(updated_product)
+            product_response = ProductResponse.model_validate(updated_product)
+            
+            # Send Telegram notification in background
+            try:
+                from app.services.notification_service import NotificationService
+                from app.core.async_processing import run_async_in_background
+                
+                run_async_in_background(
+                    NotificationService.send_product_update_notification(
+                        product_name=product_response.name,
+                        product_id=product_id
+                    )
+                )
+            except Exception as e:
+                # Log error but don't fail the product update
+                logger.error("Error sending product update notification: %s", str(e), exc_info=True)
+            
+            return product_response
         except Exception as e:
             self.db.rollback()
             raise ValueError(f"Failed to update product: {str(e)}")
@@ -205,7 +240,25 @@ class ProductService:
         product = self.product_repo.deactivate(product_id)
         if not product:
             return None
-        return ProductResponse.model_validate(product)
+        
+        product_response = ProductResponse.model_validate(product)
+        
+        # Send Telegram notification in background
+        try:
+            from app.services.notification_service import NotificationService
+            from app.core.async_processing import run_async_in_background
+            
+            run_async_in_background(
+                NotificationService.send_product_delete_notification(
+                    product_name=product_response.name,
+                    product_id=product_id
+                )
+            )
+        except Exception as e:
+            # Log error but don't fail the product deletion
+            logger.error("Error sending product deletion notification: %s", str(e), exc_info=True)
+        
+        return product_response
 
     # ============================================================
     # DELETE OPERATIONS
@@ -273,8 +326,27 @@ class ProductService:
             movement = movement_service.create_movement(movement_data)
 
             updated_product = self.product_repo.get_by_id(product_id)
+            product_response = ProductResponse.model_validate(updated_product)
+            
+            # Send Telegram notification in background
+            try:
+                from app.services.notification_service import NotificationService
+                from app.core.async_processing import run_async_in_background
+                
+                run_async_in_background(
+                    NotificationService.send_stock_add_notification(
+                        product_name=product_response.name,
+                        quantity=quantity,
+                        new_stock=product_response.available_quantity,
+                        notes=notes
+                    )
+                )
+            except Exception as e:
+                # Log error but don't fail the stock addition
+                logger.error("Error sending stock addition notification: %s", str(e), exc_info=True)
+            
             return (
-                ProductResponse.model_validate(updated_product),
+                product_response,
                 movement
             )
         except Exception as e:

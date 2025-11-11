@@ -212,6 +212,36 @@ class SubscriptionService:
             db.commit()
             db.refresh(subscription_model)
 
+        # Send Telegram notification in background
+        try:
+            # Reload subscription with relationships
+            subscription_with_rels = db.query(SubscriptionModel).options(
+                joinedload(SubscriptionModel.client),
+                joinedload(SubscriptionModel.plan)
+            ).filter(SubscriptionModel.id == subscription_model.id).first()
+
+            if subscription_with_rels and subscription_with_rels.client and subscription_with_rels.plan:
+                # Format client name using utility function
+                client_name = format_client_name(
+                    first_name=subscription_with_rels.client.first_name,
+                    last_name=subscription_with_rels.client.last_name,
+                    middle_name=subscription_with_rels.client.middle_name,
+                    second_last_name=subscription_with_rels.client.second_last_name
+                )
+
+                # Send notification asynchronously (fire and forget)
+                run_async_in_background(
+                    NotificationService.send_subscription_renew_notification(
+                        client_name=client_name,
+                        plan_name=subscription_with_rels.plan.name,
+                        start_date=renewal_start.strftime("%Y-%m-%d"),
+                        end_date=end_date.strftime("%Y-%m-%d")
+                    )
+                )
+        except Exception as e:
+            # Log error but don't fail the subscription renewal
+            logger.error("Error sending subscription renewal notification: %s", str(e), exc_info=True)
+
         return Subscription.from_orm(subscription_model)
 
     @staticmethod
@@ -284,6 +314,35 @@ class SubscriptionService:
                 logger.error(f"Error updating scheduled subscriptions after cancellation: {str(e)}")
                 # Don't fail the cancellation if scheduled update fails
                 raise
+
+        # Send Telegram notification in background
+        try:
+            # Reload subscription with relationships
+            subscription_with_rels = db.query(SubscriptionModel).options(
+                joinedload(SubscriptionModel.client),
+                joinedload(SubscriptionModel.plan)
+            ).filter(SubscriptionModel.id == subscription_model.id).first()
+
+            if subscription_with_rels and subscription_with_rels.client and subscription_with_rels.plan:
+                # Format client name using utility function
+                client_name = format_client_name(
+                    first_name=subscription_with_rels.client.first_name,
+                    last_name=subscription_with_rels.client.last_name,
+                    middle_name=subscription_with_rels.client.middle_name,
+                    second_last_name=subscription_with_rels.client.second_last_name
+                )
+
+                # Send notification asynchronously (fire and forget)
+                run_async_in_background(
+                    NotificationService.send_subscription_cancel_notification(
+                        client_name=client_name,
+                        plan_name=subscription_with_rels.plan.name,
+                        cancellation_reason=cancel_data.cancellation_reason
+                    )
+                )
+        except Exception as e:
+            # Log error but don't fail the subscription cancellation
+            logger.error("Error sending subscription cancellation notification: %s", str(e), exc_info=True)
 
         return Subscription.from_orm(subscription_model)
 
