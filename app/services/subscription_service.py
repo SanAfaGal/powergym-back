@@ -360,6 +360,8 @@ class SubscriptionService:
         Returns:
             int: Number of subscriptions expired
         """
+        from app.utils.timezone import get_today_colombia
+        
         # Get expired subscriptions
         expired_subscriptions = SubscriptionRepository.get_expired(db)
         
@@ -386,54 +388,59 @@ class SubscriptionService:
     @staticmethod
     def activate_scheduled_subscriptions(db: Session) -> int:
         """
-        Activate all scheduled subscriptions that have reached their start_date.
+        Transition scheduled subscriptions to PENDING_PAYMENT status when they reach their start_date.
 
         Uses the current date in America/Bogota timezone for comparison.
-        Only subscriptions with SCHEDULED status are activated.
-        Only activates subscriptions for clients that do NOT have an active subscription
+        Only subscriptions with SCHEDULED status are processed.
+        Only processes subscriptions for clients that do NOT have an active subscription
         (to respect the constraint of one active subscription per client).
+
+        Business rule: SCHEDULED -> PENDING_PAYMENT (when start_date arrives)
+        The subscription will become ACTIVE once payment is completed.
 
         Args:
             db: Database session
 
         Returns:
-            int: Number of subscriptions activated
+            int: Number of subscriptions updated from SCHEDULED to PENDING_PAYMENT
         """
+        from app.utils.timezone import get_today_colombia
+        
         # Get scheduled subscriptions ready to activate
         ready_subscriptions = SubscriptionRepository.get_ready_to_activate(db)
         
         if not ready_subscriptions:
-            logger.info("No scheduled subscriptions ready to activate")
+            logger.info("No scheduled subscriptions ready to transition to PENDING_PAYMENT")
             return 0
 
-        # Filter subscriptions: only activate if client doesn't have an active subscription
-        subscriptions_to_activate = []
+        # Filter subscriptions: only process if client doesn't have an active subscription
+        subscriptions_to_process = []
         for sub in ready_subscriptions:
             active_subs = SubscriptionRepository.get_active_by_client(db, sub.client_id)
             if not active_subs:
-                subscriptions_to_activate.append(sub)
+                subscriptions_to_process.append(sub)
             else:
                 logger.info(
                     f"Skipping subscription {sub.id} for client {sub.client_id}: "
                     f"client already has an active subscription"
                 )
 
-        if not subscriptions_to_activate:
-            logger.info("No scheduled subscriptions can be activated (all clients have active subscriptions)")
+        if not subscriptions_to_process:
+            logger.info("No scheduled subscriptions can be processed (all clients have active subscriptions)")
             return 0
 
         # Extract subscription IDs
-        subscription_ids = [sub.id for sub in subscriptions_to_activate]
+        subscription_ids = [sub.id for sub in subscriptions_to_process]
         
-        # Batch update to ACTIVE status
-        activated_count = SubscriptionRepository.activate_subscriptions_batch(
+        # Batch update from SCHEDULED to PENDING_PAYMENT status
+        updated_count = SubscriptionRepository.activate_subscriptions_batch(
             db=db,
             subscription_ids=subscription_ids
         )
 
         logger.info(
-            f"Activated {activated_count} scheduled subscription(s). "
+            f"Updated {updated_count} scheduled subscription(s) from SCHEDULED to PENDING_PAYMENT. "
             f"Reference date (Colombia): {get_today_colombia()}"
         )
 
-        return activated_count
+        return updated_count

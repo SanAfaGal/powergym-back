@@ -472,16 +472,16 @@ class SubscriptionRepository:
     @staticmethod
     def get_ready_to_activate(db: Session) -> List[SubscriptionModel]:
         """
-        Get scheduled subscriptions ready to activate (start_date has arrived).
+        Get scheduled subscriptions ready to transition to PENDING_PAYMENT (start_date has arrived).
 
         Uses the current date in America/Bogota timezone for comparison.
-        Useful for batch updating subscriptions to ACTIVE status.
+        Useful for batch updating subscriptions from SCHEDULED to PENDING_PAYMENT status.
 
         Args:
             db: Database session
 
         Returns:
-            List[SubscriptionModel]: List of scheduled subscriptions ready to activate
+            List[SubscriptionModel]: List of scheduled subscriptions ready to transition
         """
         from datetime import datetime
         # Get current date in Colombia timezone
@@ -500,11 +500,15 @@ class SubscriptionRepository:
             subscription_ids: List[UUID]
     ) -> int:
         """
-        Batch update subscriptions to ACTIVE status.
+        Batch update subscriptions from SCHEDULED to PENDING_PAYMENT status.
+
+        This method is used when scheduled subscriptions reach their start_date.
+        They transition to PENDING_PAYMENT status, waiting for payment before
+        becoming ACTIVE.
 
         Args:
             db: Database session
-            subscription_ids: List of subscription UUIDs to activate
+            subscription_ids: List of subscription UUIDs to update
 
         Returns:
             int: Number of subscriptions updated
@@ -516,15 +520,15 @@ class SubscriptionRepository:
             updated_count = db.query(SubscriptionModel).filter(
                 SubscriptionModel.id.in_(subscription_ids)
             ).update(
-                {SubscriptionModel.status: SubscriptionStatusEnum.ACTIVE},
+                {SubscriptionModel.status: SubscriptionStatusEnum.PENDING_PAYMENT},
                 synchronize_session=False
             )
             db.commit()
 
-            logger.info(f"Activated {updated_count} subscriptions in batch")
+            logger.info(f"Updated {updated_count} scheduled subscriptions to PENDING_PAYMENT status in batch")
             return updated_count
 
         except Exception as e:
             db.rollback()
-            logger.error(f"Error activating subscriptions in batch: {str(e)}")
+            logger.error(f"Error updating scheduled subscriptions in batch: {str(e)}")
             raise

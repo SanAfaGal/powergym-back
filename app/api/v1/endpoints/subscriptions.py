@@ -217,18 +217,21 @@ def expire_subscriptions(
     response_model=ActivateSubscriptionsResponse,
     status_code=status.HTTP_200_OK,
     summary="Activate scheduled subscriptions",
-    description="Activate all scheduled subscriptions that have reached their start_date. Uses America/Bogota timezone for date comparison."
+    description="Transition scheduled subscriptions to PENDING_PAYMENT status when they reach their start_date. Uses America/Bogota timezone for date comparison."
 )
 def activate_subscriptions(
         current_user: User = Depends(get_current_active_user),
         db: Session = Depends(get_db)
 ):
     """
-    Activate all scheduled subscriptions that have reached their start_date.
+    Transition scheduled subscriptions to PENDING_PAYMENT status when they reach their start_date.
+    
+    Business rule: SCHEDULED -> PENDING_PAYMENT (when start_date arrives)
+    The subscription will become ACTIVE once payment is completed.
     
     This endpoint should be called daily (e.g., via cron) to automatically
-    activate scheduled subscriptions. Uses the current date in America/Bogota timezone.
-    Only activates subscriptions for clients that do not have an active subscription.
+    process scheduled subscriptions. Uses the current date in America/Bogota timezone.
+    Only processes subscriptions for clients that do not have an active subscription.
     """
     # Execute activation
     activated_count = SubscriptionService.activate_scheduled_subscriptions(db)
