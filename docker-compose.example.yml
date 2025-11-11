@@ -1,12 +1,21 @@
 # =============================================================================
-# PowerGym Backend - Example Docker Compose Configuration (Development)
+# PowerGym Backend - Docker Compose Example Configuration
 # =============================================================================
-# This file provides an example setup for local development.
-# Copy it to `docker-compose.yml` and adjust values as needed.
+# This is a template file for the repository.
+# Copy this file to docker-compose.yml or use with -f flag:
+#
+# Development:
+#   cp docker-compose.example.yml docker-compose.development.yml
+#   docker-compose -f docker-compose.development.yml up -d
+#
+# Production:
+#   cp docker-compose.example.yml docker-compose.production.yml
+#   docker-compose -f docker-compose.production.yml up -d
+#
 # =============================================================================
 
 networks:
-  powergym_network:
+  network:
     driver: bridge
     name: powergym_network
 
@@ -17,71 +26,107 @@ services:
   postgres:
     image: pgvector/pgvector:0.8.1-pg18-trixie
     container_name: powergym_db
-    restart: unless-stopped
-
+    restart: unless-stopped  # Use 'always' in production
     networks:
-      - powergym_network
-
+      - network
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-example_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example_password}
-      POSTGRES_DB: ${POSTGRES_DB:-powergym}
+      # IMPORTANT: Set these in your .env file
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
       TZ: ${TZ:-UTC}
-
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
-
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-scripts:/docker-entrypoint-initdb.d:ro
-
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-example_user} -d ${POSTGRES_DB:-powergym}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+    # Healthcheck recommended for production
+    # healthcheck:
+    #   test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 5
+    #   start_period: 10s
+    # Resource limits for production (uncomment and adjust)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2'
+    #       memory: 2G
+    #     reservations:
+    #       cpus: '1'
+    #       memory: 1G
 
   # ==========================================================================
   # PowerGym Backend API
   # ==========================================================================
   backend:
-    image: powergym-backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: powergym_backend
-    restart: unless-stopped
+    restart: unless-stopped  # Use 'always' in production
     networks:
-      - powergym_network
+      - network
     ports:
       - "${API_PORT:-8000}:8000"
     env_file:
-      - .env.development  # <- solo un ejemplo, no se sube el real
+      - .env
     environment:
-      ENVIRONMENT: development
+      - ENVIRONMENT=${ENVIRONMENT:-development}
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres
+      # For production, use healthcheck condition:
+      # postgres:
+      #   condition: service_healthy
     volumes:
       - ./logs:/app/logs:rw
       - ./uploads:/app/uploads:rw
+      # Persistent volume for InsightFace models (buffalo_s)
+      - insightface_models:/root/.insightface/models
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"  # Increase to 100m for production
+        max-file: "3"    # Increase to 10 for production
+    # Healthcheck for production (uncomment and adjust endpoint)
+    # healthcheck:
+    #   test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/monitoring/health || exit 1"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 60s
+    # Resource limits for production (uncomment and adjust)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '4'
+    #       memory: 4G
+    #     reservations:
+    #       cpus: '2'
+    #       memory: 2G
 
   # ==========================================================================
-  # Adminer - Database Administration UI (Optional)
+  # Adminer - Database Administration UI (Development Only)
   # ==========================================================================
+  # IMPORTANT: Remove or comment out this service in production!
   adminer:
     image: adminer:latest
     container_name: powergym_adminer
     restart: unless-stopped
     networks:
-      - powergym_network
+      - network
     ports:
       - "${ADMINER_PORT:-8080}:8080"
     environment:
       ADMINER_DEFAULT_SERVER: postgres
       ADMINER_DEFAULT_DRIVER: pgsql
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres
+      # For production, use healthcheck condition:
+      # postgres:
+      #   condition: service_healthy
 
 # =============================================================================
 # Volumes
@@ -90,3 +135,9 @@ volumes:
   postgres_data:
     driver: local
     name: powergym_postgres_data
+  # Persistent volume for InsightFace models
+  # Models are downloaded automatically on first run and persist between restarts
+  insightface_models:
+    driver: local
+    name: insightface_models
+

@@ -20,9 +20,11 @@ env/
 ENV/
 
 # Environment files (use --env-file instead)
+# Exclude all .env files from Docker build context
 .env
 .env.*
 !.env.example
+# Note: .env files are mounted at runtime, not included in image
 
 # IDE
 .vscode/
@@ -52,9 +54,11 @@ logs/
 *.sqlite3
 
 # Docker
+# Exclude Docker files from build context (not needed in image)
 Dockerfile*
 docker-compose*.yml
 .dockerignore
+# Keep docker-compose.example.yml if needed for reference (but typically not needed in image)
 
 # Git
 .git/
@@ -87,12 +91,16 @@ Thumbs.db
 
 # Large model files (if models are loaded from external storage)
 # InsightFace downloads models automatically - they're not needed in image
+# Models are stored in persistent volume, not in image
 *.onnx
 *.pth
 *.h5
 *.pb
 weights/
 *.weights
+# InsightFace models directory (downloaded at runtime to volume)
+.insightface/
+~/.insightface/
 
 # Large data files
 *.csv
@@ -111,4 +119,16 @@ htmlcov/
 # Jupyter notebooks
 *.ipynb
 .ipynb_checkpoints/
+
+# Deployment scripts (not needed in image)
+deploy.sh
+rebuild.sh
+
+# Uploads directory (mounted as volume, not needed in image)
+uploads/
+uploads/*
+
+# Local development files
+*.local
+*.local.*
 

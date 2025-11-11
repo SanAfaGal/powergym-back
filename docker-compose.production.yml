@@ -1,0 +1,106 @@
+# PowerGym Backend - Docker Compose Configuration (Production)
+# Usage: docker-compose -f docker-compose.production.yml up -d
+#        docker-compose -f docker-compose.production.yml down
+#        docker-compose -f docker-compose.production.yml logs -f
+#
+# IMPORTANT: Configure all environment variables in .env file before starting
+# Do not use default values in production!
+
+networks:
+  network:
+    driver: bridge
+    name: powergym_prod_network
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.1-pg18-trixie
+    container_name: powergym_db_prod
+    restart: always
+    networks:
+      - network
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+      TZ: ${TZ:-UTC}
+    # Production: Only expose port if needed for external access
+    # Consider removing port mapping and using internal network only
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # Resource limits optimized for 2 vCPU / 4GB RAM VPS
+    # Leaves ~0.3 CPU and ~0.5GB for system and other processes
+    deploy:
+      resources:
+        limits:
+          cpus: '0.8'
+          memory: 1.5G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: powergym_backend_prod
+    restart: always
+    networks:
+      - network
+    ports:
+      - "${API_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs:rw
+      - ./uploads:/app/uploads:rw
+      - insightface_models:/root/.insightface/models
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/monitoring/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # Resource limits optimized for 2 vCPU / 4GB RAM VPS
+    # Backend gets more resources for face recognition processing
+    deploy:
+      resources:
+        limits:
+          cpus: '1.2'
+          memory: 2.5G
+        reservations:
+          cpus: '0.7'
+          memory: 1.5G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+
+volumes:
+  postgres_data_prod:
+    driver: local
+    name: powergym_postgres_data_prod
+  insightface_models:
+    driver: local
+    name: insightface_models
+

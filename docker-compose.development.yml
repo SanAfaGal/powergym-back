@@ -1,0 +1,86 @@
+# PowerGym Backend - Docker Compose Configuration (Development)
+# Usage: docker-compose -f docker-compose.development.yml up -d
+#        docker-compose -f docker-compose.development.yml down
+#        docker-compose -f docker-compose.development.yml logs -f
+
+networks:
+  network:
+    driver: bridge
+    name: powergym_dev_network
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.1-pg18-trixie
+    container_name: powergym_db_dev
+    restart: unless-stopped
+    networks:
+      - network
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-powergym}
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    # Healthcheck para desarrollo (opcional pero recomendado)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-powergym}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: powergym_backend_dev
+    restart: unless-stopped
+    networks:
+      - network
+    ports:
+      - "${API_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=development
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs:rw
+      - ./uploads:/app/uploads:rw
+      - insightface_models:/root/.insightface/models
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  adminer:
+    image: adminer:latest
+    container_name: powergym_adminer_dev
+    restart: unless-stopped
+    networks:
+      - network
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DEFAULT_DRIVER: pgsql
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data_dev:
+    driver: local
+    name: powergym_postgres_data_dev
+  insightface_models:
+    driver: local
+    name: insightface_models
+
