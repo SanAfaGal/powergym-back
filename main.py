@@ -48,6 +48,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         logger.info("Initializing super admin user")
         UserService.initialize_super_admin(db)
+        
+        # Pre-inicializar y hacer warmup del modelo de reconocimiento facial
+        logger.info("Pre-loading and warming up InsightFace model...")
+        try:
+            from app.services.face_recognition.embedding import EmbeddingService
+            import numpy as np
+            
+            # Inicializar el modelo
+            app_instance = EmbeddingService._get_face_analysis()
+            
+            # Hacer warmup con una imagen dummy para optimizar ONNX Runtime
+            # Esto asegura que la primera inferencia real sea más rápida
+            dummy_image = np.zeros((640, 640, 3), dtype=np.uint8)
+            try:
+                app_instance.get(dummy_image)
+                logger.info("InsightFace model warmed up successfully")
+            except Exception as warmup_error:
+                # El warmup puede fallar si no hay cara, pero el modelo está inicializado
+                logger.debug(f"Warmup inference completed (expected no face): {warmup_error}")
+                logger.info("InsightFace model initialized successfully")
+        except Exception as e:
+            logger.warning(f"Failed to pre-load InsightFace model: {e}. It will load on first use.")
+            # No fallar el startup si el modelo no se puede cargar
+        
         logger.info("Application startup completed successfully")
     except Exception as e:
         logger.error(f"Error during application startup: {e}", exc_info=True)

@@ -80,36 +80,6 @@ if ! uv run alembic upgrade head; then
     exit 1
 fi
 
-# Pre-download InsightFace models
-echo "Pre-loading InsightFace models..."
-if ! uv run python -c "
-import sys
-from app.core.config import settings
-from insightface.app import FaceAnalysis
-
-try:
-    print(f'Loading InsightFace model: {settings.INSIGHTFACE_MODEL}...')
-    providers = ['CPUExecutionProvider']
-    if settings.INSIGHTFACE_CTX_ID >= 0:
-        providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-    
-    app = FaceAnalysis(name=settings.INSIGHTFACE_MODEL, providers=providers)
-    app.prepare(
-        ctx_id=settings.INSIGHTFACE_CTX_ID,
-        det_size=(settings.INSIGHTFACE_DET_SIZE, settings.INSIGHTFACE_DET_SIZE)
-    )
-    print('✓ InsightFace models loaded successfully!')
-    sys.exit(0)
-except Exception as e:
-    print(f'ERROR: Failed to load InsightFace models: {e}', file=sys.stderr)
-    import traceback
-    traceback.print_exc(file=sys.stderr)
-    sys.exit(1)
-"; then
-    echo "ERROR: Failed to pre-load InsightFace models"
-    exit 1
-fi
-
 # Start application
 echo "Starting application..."
 exec uv run uvicorn main:app --host 0.0.0.0 --port 8000
