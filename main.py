@@ -100,14 +100,3 @@ async def root() -> dict:
         Dictionary with API status and version
     """
     return {"message": "API is running", "version": settings.VERSION}
-
-
-@app.get("/health")
-async def health_check() -> dict:
-    """
-    Health check endpoint for monitoring and load balancers.
-    
-    Returns:
-        Dictionary with health status
-    """
-    return {"status": "healthy"}

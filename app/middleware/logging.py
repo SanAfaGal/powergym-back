@@ -13,9 +13,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class StructuredLoggingMiddleware(BaseHTTPMiddleware):
-    # Endpoints de monitoreo que no deben ser logueados para reducir escritura en disco
+    """
+    Monitoring endpoints excluded from logging to reduce disk writes.
+    
+    These endpoints are frequently polled by health check systems and
+    don't need to be logged for normal operations.
+    """
     EXCLUDED_PATHS = {
-        '/health',
         '/api/v1/monitoring/health',
         '/api/v1/monitoring/ready',
         '/api/v1/monitoring/metrics',
@@ -27,7 +31,7 @@ class StructuredLoggingMiddleware(BaseHTTPMiddleware):
 
         start_time = time.time()
         
-        # Saltar logging para endpoints de monitoreo
+        # Skip logging for monitoring endpoints
         should_log = request.url.path not in self.EXCLUDED_PATHS
 
         log_data = {
@@ -41,7 +45,7 @@ class StructuredLoggingMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             process_time = time.time() - start_time
 
-            # Solo loguear si no es un endpoint excluido
+            # Only log if not an excluded endpoint
             if should_log:
                 log_data.update({
                     "status_code": response.status_code,
@@ -58,7 +62,7 @@ class StructuredLoggingMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             process_time = time.time() - start_time
             
-            # Solo loguear errores si no es un endpoint excluido
+            # Only log errors if not an excluded endpoint
             if should_log:
                 log_data.update({
                     "status_code": 500,
