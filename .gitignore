@@ -7,6 +7,12 @@ venv/
 .env/
 .envrc
 *.env
+!.env.example
+# Allow .env.example but ignore all other .env files (development, production, etc.)
+.env.development
+.env.production
+.env.local
+.env.*.local
 
 # ─── Archivos de sistema ───────────────
 .DS_Store
@@ -80,9 +86,31 @@ node_modules/
 embeddings/
 biometric_data/
 
+# ─── Docker Compose ─────────────────────
+# Ignore local docker-compose files with real configs
+docker-compose.yml
+docker-compose.override.yml
+docker-compose.local.yml
+# Allow template/example files for repository
+!docker-compose.example.yml
+!docker-compose.development.yml
+!docker-compose.production.yml
+
+# ─── Uploads y datos de usuario ────────
+uploads/
+uploads/*
+!uploads/.gitkeep
+
+# ─── Volúmenes Docker locales ──────────
+# Ignore local Docker volumes data
+.docker/
+
 # No ignores esto:
 !supabase/migrations/
 !alembic/
+!docker-compose.example.yml
+!docker-compose.development.yml
+!docker-compose.production.yml
 
 #Ignore cursor AI rules
 .cursor\rules\codacy.mdc
