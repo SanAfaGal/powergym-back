@@ -27,14 +27,20 @@ def health_check(db: Session = Depends(get_db)):
 
 
 @router.get("/metrics")
-def get_metrics():
+def get_metrics() -> dict:
+    """
+    Get application metrics and configuration information.
+    
+    Returns:
+        Dictionary containing API version, feature flags, and face recognition settings
+    """
     return {
         "api_version": settings.VERSION,
         "rate_limit_enabled": settings.RATE_LIMIT_ENABLED,
         "compression_enabled": settings.ENABLE_COMPRESSION,
-        "face_recognition_model": "MediaPipe FaceMesh + FaceDetection",
+        "face_recognition_model": f"InsightFace {settings.INSIGHTFACE_MODEL}",
         "face_recognition_tolerance": settings.FACE_RECOGNITION_TOLERANCE,
-        "mediapipe_min_detection_confidence": settings.MEDIAPIPE_MIN_DETECTION_CONFIDENCE
+        "embedding_dimensions": settings.EMBEDDING_DIMENSIONS
     }
 
 

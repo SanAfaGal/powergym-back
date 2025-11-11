@@ -1,38 +1,67 @@
 """
 Embedding generation and comparison utilities for face recognition.
-Handles face encoding extraction and similarity calculations using InsightFace.
+
+This module handles face encoding extraction and similarity calculations
+using InsightFace, including face detection, embedding extraction, and
+similarity metrics computation.
 """
 
-from typing import List, Tuple, Optional, Any
+import logging
+from typing import List, Tuple, Optional, Any, Dict
 import numpy as np
 import cv2
 from insightface.app import FaceAnalysis
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 
 class EmbeddingService:
-    """Handles face embedding generation and comparison operations using InsightFace."""
+    """
+    Handles face embedding generation and comparison operations using InsightFace.
+    
+    This class provides methods for extracting face embeddings from images,
+    comparing embeddings for similarity, and validating embedding formats.
+    """
 
-    _app = None
+    _app: Optional[FaceAnalysis] = None
 
     @classmethod
-    def _get_face_analysis(cls):
-        """Lazy initialization of InsightFace FaceAnalysis."""
+    def _get_face_analysis(cls) -> FaceAnalysis:
+        """
+        Lazy initialization of InsightFace FaceAnalysis.
+        
+        Returns:
+            Initialized FaceAnalysis instance
+            
+        Raises:
+            RuntimeError: If InsightFace model initialization fails
+        """
         if cls._app is None:
-            # Determinar provider según configuración
-            providers = ['CPUExecutionProvider']
-            if settings.INSIGHTFACE_CTX_ID >= 0:
-                providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+            try:
+                logger.info(f"Initializing InsightFace model: {settings.INSIGHTFACE_MODEL}")
+                
+                # Determine execution provider based on configuration
+                providers = ['CPUExecutionProvider']
+                if settings.INSIGHTFACE_CTX_ID >= 0:
+                    providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+                    logger.debug(f"Using GPU context ID: {settings.INSIGHTFACE_CTX_ID}")
+                else:
+                    logger.debug("Using CPU execution provider")
 
-            cls._app = FaceAnalysis(
-                name=settings.INSIGHTFACE_MODEL,
-                providers=providers
-            )
-            cls._app.prepare(
-                ctx_id=settings.INSIGHTFACE_CTX_ID,
-                det_size=(settings.INSIGHTFACE_DET_SIZE, settings.INSIGHTFACE_DET_SIZE)
-            )
+                cls._app = FaceAnalysis(
+                    name=settings.INSIGHTFACE_MODEL,
+                    providers=providers
+                )
+                cls._app.prepare(
+                    ctx_id=settings.INSIGHTFACE_CTX_ID,
+                    det_size=(settings.INSIGHTFACE_DET_SIZE, settings.INSIGHTFACE_DET_SIZE)
+                )
+                logger.info("InsightFace model initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize InsightFace model: {e}", exc_info=True)
+                raise RuntimeError(f"Failed to initialize InsightFace model: {str(e)}") from e
         return cls._app
 
     @staticmethod
@@ -63,21 +92,22 @@ class EmbeddingService:
         faces = app.get(image_bgr)
 
         if len(faces) == 0:
+            logger.warning("No face detected in the image")
             raise ValueError("No face detected in the image")
 
         if len(faces) > 1:
-            # Opcional: usar la cara más grande en lugar de error
-            # faces = sorted(faces, key=lambda x: (x.bbox[2]-x.bbox[0]) * (x.bbox[3]-x.bbox[1]), reverse=True)
-            # faces = [faces[0]]
-            raise ValueError(
-                f"Multiple faces detected ({len(faces)}). Please provide an image with a single face"
-            )
+            logger.warning(f"Multiple faces detected ({len(faces)}). Using the largest face.")
+            # Use the largest face instead of raising an error
+            faces = sorted(faces, key=lambda x: (x.bbox[2]-x.bbox[0]) * (x.bbox[3]-x.bbox[1]), reverse=True)
+            faces = [faces[0]]
 
-        # El embedding ya viene normalizado con norma L2
+        # Embedding is already L2-normalized by InsightFace
         embedding = faces[0].normed_embedding
 
-        # Convertir a float64 para consistencia
-        return embedding.astype(np.float64)
+        # Convert to float64 for consistency
+        embedding_array = embedding.astype(np.float64)
+        logger.debug(f"Extracted face embedding with dimensions: {len(embedding_array)}")
+        return embedding_array
 
     @staticmethod
     def validate_embedding(embedding: Any) -> np.ndarray:
@@ -164,13 +194,14 @@ class EmbeddingService:
         """
         Compare two face embeddings for similarity using cosine similarity.
 
-        InsightFace embeddings son L2-normalizados, por lo que usamos cosine similarity.
+        InsightFace embeddings are L2-normalized, so we use cosine similarity
+        (dot product) for comparison, which is more appropriate than Euclidean distance.
 
         Args:
-            embedding_1: First embedding (512-dimensional)
-            embedding_2: Second embedding (512-dimensional)
-            tolerance: Similarity threshold (0.0-1.0, higher = more similar)
-                      Default from config. Recommended: 0.4-0.5
+            embedding_1: First embedding (typically 512-dimensional for InsightFace)
+            embedding_2: Second embedding (typically 512-dimensional for InsightFace)
+            tolerance: Similarity threshold (0.0-1.0, higher = more similar).
+                      Default from config. Recommended: 0.4-0.6
 
         Returns:
             Tuple of (is_match: bool, similarity: float)
@@ -200,13 +231,14 @@ class EmbeddingService:
         face_encoding_1 = EmbeddingService.validate_embedding(parsed_embedding_1)
         face_encoding_2 = EmbeddingService.validate_embedding(parsed_embedding_2)
 
-        # Calcular similitud coseno (dot product de vectores L2-normalizados)
-        # Como InsightFace ya normaliza los embeddings, el dot product ES la similitud coseno
+        # Calculate cosine similarity (dot product of L2-normalized vectors)
+        # Since InsightFace already normalizes embeddings, dot product IS cosine similarity
         similarity = float(np.dot(face_encoding_1, face_encoding_2))
 
-        # Mayor similitud = match (opuesto a distancia euclidiana)
+        # Higher similarity = match (opposite of Euclidean distance)
         match = similarity >= tolerance
 
+        logger.debug(f"Embedding comparison: similarity={similarity:.4f}, tolerance={tolerance:.4f}, match={match}")
         return match, similarity
 
     @staticmethod
@@ -265,20 +297,24 @@ class EmbeddingService:
         return float(similarity)
 
     @staticmethod
-    def get_face_quality_score(image_array: np.ndarray) -> dict:
+    def get_face_quality_score(image_array: np.ndarray) -> Dict[str, Any]:
         """
-        Evaluar la calidad de una imagen facial para reconocimiento.
+        Evaluate the quality of a facial image for recognition.
+
+        This method analyzes various image quality metrics including face size,
+        brightness, and sharpness to provide recommendations for better recognition.
 
         Args:
             image_array: Image as numpy array in RGB format
 
         Returns:
-            Dictionary con métricas de calidad:
-            - score: Puntuación general (0-1)
-            - brightness: Nivel de brillo
-            - sharpness: Nivel de nitidez
-            - face_size: Tamaño de la cara detectada
-            - recommendations: Lista de recomendaciones
+            Dictionary with quality metrics:
+            - score: Overall quality score (0-1)
+            - brightness: Brightness level
+            - sharpness: Sharpness level (Laplacian variance)
+            - face_size: Ratio of face area to image area
+            - face_dimensions: Width and height of detected face
+            - recommendations: List of quality improvement recommendations
         """
         app = EmbeddingService._get_face_analysis()
 
@@ -291,11 +327,13 @@ class EmbeddingService:
         faces = app.get(image_bgr)
 
         if len(faces) == 0:
+            logger.warning("No face detected for quality assessment")
             return {
                 'score': 0.0,
                 'brightness': None,
                 'sharpness': None,
                 'face_size': None,
+                'face_dimensions': None,
                 'recommendations': ['No face detected']
             }
 
@@ -351,21 +389,23 @@ class EmbeddingService:
         }
 
     @staticmethod
-    def extract_multiple_faces(image_array: np.ndarray) -> List[dict]:
+    def extract_multiple_faces(image_array: np.ndarray) -> List[Dict[str, Any]]:
         """
-        Detectar y extraer embeddings de múltiples caras en una imagen.
+        Detect and extract embeddings from multiple faces in an image.
 
-        Útil para fotos de grupo o registro masivo.
+        Useful for group photos or bulk registration scenarios.
 
         Args:
             image_array: Image as numpy array in RGB format
 
         Returns:
-            Lista de diccionarios con información de cada cara:
-            - embedding: Face embedding (512-dim)
-            - bbox: Bounding box [x1, y1, x2, y2]
-            - confidence: Detection confidence
-            - landmarks: Facial landmarks
+            List of dictionaries with information for each detected face:
+            - embedding: Face embedding vector (typically 512-dim)
+            - bbox: Bounding box coordinates [x1, y1, x2, y2]
+            - confidence: Detection confidence score
+            - landmarks: Facial landmarks (if available)
+            - age: Estimated age (if available)
+            - gender: Estimated gender (if available)
         """
         app = EmbeddingService._get_face_analysis()
 
@@ -388,6 +428,7 @@ class EmbeddingService:
                 'gender': 'M' if face.gender == 1 else 'F' if hasattr(face, 'gender') else None
             })
 
+        logger.debug(f"Extracted {len(results)} face(s) from image")
         return results
 
     @staticmethod
@@ -397,17 +438,17 @@ class EmbeddingService:
             tolerance: Optional[float] = None
     ) -> Tuple[Optional[int], float]:
         """
-        Encontrar la mejor coincidencia entre un embedding de consulta y una lista de candidatos.
+        Find the best match between a query embedding and a list of candidate embeddings.
 
         Args:
-            query_embedding: Embedding a buscar
-            candidate_embeddings: Lista de embeddings candidatos
-            tolerance: Umbral de similitud mínimo
+            query_embedding: Embedding to search for
+            candidate_embeddings: List of candidate embeddings to compare against
+            tolerance: Minimum similarity threshold (uses config default if None)
 
         Returns:
             Tuple of (best_match_index: Optional[int], best_similarity: float)
-            - best_match_index: Índice del mejor match, o None si ninguno supera el threshold
-            - best_similarity: Similitud del mejor match
+            - best_match_index: Index of the best match, or None if none exceeds threshold
+            - best_similarity: Similarity score of the best match
         """
         if tolerance is None:
             tolerance = settings.FACE_RECOGNITION_TOLERANCE
@@ -425,8 +466,10 @@ class EmbeddingService:
                 best_similarity = similarity
                 best_index = idx
 
-        # Solo retornar match si supera el threshold
+        # Only return match if it exceeds the threshold
         if best_similarity < tolerance:
+            logger.debug(f"Best match similarity {best_similarity:.4f} below threshold {tolerance:.4f}")
             return None, best_similarity
 
+        logger.debug(f"Best match found at index {best_index} with similarity {best_similarity:.4f}")
         return best_index, best_similarity

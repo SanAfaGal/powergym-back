@@ -1,23 +1,62 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+"""
+Face recognition API endpoints.
+
+This module provides REST API endpoints for face recognition operations,
+including registration, authentication, comparison, update, and deletion.
+"""
+
+import logging
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+
+from app.api.dependencies import get_current_user
+from app.db.session import get_db
 from app.schemas.face_recognition import (
-    FaceRegistrationRequest,
-    FaceRegistrationResponse,
     FaceAuthenticationRequest,
     FaceAuthenticationResponse,
     FaceComparisonRequest,
     FaceComparisonResponse,
+    FaceDeleteResponse,
+    FaceRegistrationRequest,
+    FaceRegistrationResponse,
     FaceUpdateRequest,
-    FaceDeleteResponse
 )
-from app.services.face_recognition.core import FaceRecognitionService
-from app.services.client_service import ClientService
-from app.api.dependencies import get_current_user
 from app.schemas.user import User
-from app.db.session import get_db
-from uuid import UUID
+from app.services.client_service import ClientService
+from app.services.face_recognition.core import FaceRecognitionService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _validate_client_active(db: Session, client_id: UUID) -> None:
+    """
+    Validate that a client exists and is active.
+    
+    Args:
+        db: Database session
+        client_id: UUID of the client to validate
+        
+    Raises:
+        HTTPException: If client not found (404) or not active (400)
+    """
+    client = ClientService.get_client_by_id(db, client_id)
+    if not client:
+        logger.warning(f"Client not found: {client_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Client not found"
+        )
+
+    if not client.is_active:
+        logger.warning(f"Client is not active: {client_id}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Client is not active"
+        )
 
 @router.post(
     "/register",
@@ -48,19 +87,23 @@ def register_client_face(
     request: FaceRegistrationRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-):
-    client = ClientService.get_client_by_id(db, request.client_id)
-    if not client:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="client not found"
-        )
-
-    if not client.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="client is not active"
-        )
+) -> FaceRegistrationResponse:
+    """
+    Register a client's face biometric data.
+    
+    Args:
+        request: Face registration request with client_id and image_base64
+        current_user: Authenticated user (from dependency)
+        db: Database session (from dependency)
+        
+    Returns:
+        FaceRegistrationResponse with success status and biometric information
+        
+    Raises:
+        HTTPException: If client validation fails or registration fails
+    """
+    logger.info(f"Face registration requested for client {request.client_id} by user {current_user.id}")
+    _validate_client_active(db, request.client_id)
 
     result = FaceRecognitionService.register_face(
         db=db,
@@ -69,11 +112,14 @@ def register_client_face(
     )
 
     if not result.get("success"):
+        error_msg = result.get("error", "Failed to register face")
+        logger.error(f"Face registration failed for client {request.client_id}: {error_msg}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=result.get("error", "Failed to register face")
+            detail=error_msg
         )
 
+    logger.info(f"Face registered successfully for client {request.client_id}")
     return FaceRegistrationResponse(
         success=True,
         message="Face registered successfully",
@@ -113,18 +159,36 @@ def authenticate_client_face(
     request: FaceAuthenticationRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-):
+) -> FaceAuthenticationResponse:
+    """
+    Authenticate a client by face image.
+    
+    Args:
+        request: Face authentication request with image_base64
+        current_user: Authenticated user (from dependency)
+        db: Database session (from dependency)
+        
+    Returns:
+        FaceAuthenticationResponse with authentication result and client information
+        
+    Raises:
+        HTTPException: If authentication fails (401) or image processing fails (400)
+    """
+    logger.info(f"Face authentication requested by user {current_user.id}")
     result = FaceRecognitionService.authenticate_face(
         db=db,
         image_base64=request.image_base64
     )
 
     if not result.get("success"):
+        error_msg = result.get("error", "Authentication failed")
+        logger.warning(f"Face authentication failed: {error_msg}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=result.get("error", "Authentication failed")
+            detail=error_msg
         )
 
+    logger.info(f"Face authenticated successfully for client {result.get('client_id')}")
     return FaceAuthenticationResponse(
         success=True,
         message="Face authenticated successfully",
@@ -161,18 +225,36 @@ def compare_faces(
     request: FaceComparisonRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-):
+) -> FaceComparisonResponse:
+    """
+    Compare two face images to determine if they belong to the same person.
+    
+    Args:
+        request: Face comparison request with two image_base64 strings
+        current_user: Authenticated user (from dependency)
+        db: Database session (from dependency)
+        
+    Returns:
+        FaceComparisonResponse with comparison result and confidence scores
+        
+    Raises:
+        HTTPException: If image processing fails or comparison fails (400)
+    """
+    logger.info(f"Face comparison requested by user {current_user.id}")
     result = FaceRecognitionService.compare_two_faces(
         image_base64_1=request.image_base64_1,
         image_base64_2=request.image_base64_2
     )
 
     if not result.get("success"):
+        error_msg = result.get("error", "Failed to compare faces")
+        logger.error(f"Face comparison failed: {error_msg}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=result.get("error", "Failed to compare faces")
+            detail=error_msg
         )
 
+    logger.info(f"Face comparison completed: match={result.get('match')}, confidence={result.get('confidence'):.4f}")
     return FaceComparisonResponse(
         success=True,
         message="Faces compared successfully",
@@ -209,19 +291,23 @@ def update_client_face(
     request: FaceUpdateRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-):
-    client = ClientService.get_client_by_id(db, request.client_id)
-    if not client:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="client not found"
-        )
-
-    if not client.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="client is not active"
-        )
+) -> FaceRegistrationResponse:
+    """
+    Update a client's face biometric data with a new image.
+    
+    Args:
+        request: Face update request with client_id and image_base64
+        current_user: Authenticated user (from dependency)
+        db: Database session (from dependency)
+        
+    Returns:
+        FaceRegistrationResponse with success status and updated biometric information
+        
+    Raises:
+        HTTPException: If client validation fails or update fails
+    """
+    logger.info(f"Face update requested for client {request.client_id} by user {current_user.id}")
+    _validate_client_active(db, request.client_id)
 
     result = FaceRecognitionService.update_face(
         db=db,
@@ -230,11 +316,14 @@ def update_client_face(
     )
 
     if not result.get("success"):
+        error_msg = result.get("error", "Failed to update face")
+        logger.error(f"Face update failed for client {request.client_id}: {error_msg}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=result.get("error", "Failed to update face")
+            detail=error_msg
         )
 
+    logger.info(f"Face updated successfully for client {request.client_id}")
     return FaceRegistrationResponse(
         success=True,
         message="Face updated successfully",
@@ -268,22 +357,42 @@ def delete_client_face(
     client_id: UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-):
+) -> FaceDeleteResponse:
+    """
+    Delete all face biometric data for a specific client.
+    
+    Args:
+        client_id: UUID of the client whose face biometrics should be deleted
+        current_user: Authenticated user (from dependency)
+        db: Database session (from dependency)
+        
+    Returns:
+        FaceDeleteResponse with success status
+        
+    Raises:
+        HTTPException: If client not found (404) or deletion fails (400)
+    """
+    logger.info(f"Face deletion requested for client {client_id} by user {current_user.id}")
+    
     client = ClientService.get_client_by_id(db, client_id)
     if not client:
+        logger.warning(f"Client not found for face deletion: {client_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="client not found"
+            detail="Client not found"
         )
 
     result = FaceRecognitionService.delete_face(db=db, client_id=client_id)
 
     if not result.get("success"):
+        error_msg = result.get("error", "Failed to delete face biometric")
+        logger.error(f"Face deletion failed for client {client_id}: {error_msg}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=result.get("error", "Failed to delete face biometric")
+            detail=error_msg
         )
 
+    logger.info(f"Face biometric deleted successfully for client {client_id}")
     return FaceDeleteResponse(
         success=True,
         message="Face biometric deleted successfully"

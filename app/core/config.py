@@ -1,10 +1,24 @@
-from typing import List, Optional
-from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+"""
+Application configuration settings.
+
+This module defines all application settings using Pydantic BaseSettings,
+which automatically loads values from environment variables or .env files.
+"""
+
 import os
+from typing import List, Optional
+
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    """Configuración de PowerGym Backend"""
+    """
+    PowerGym Backend Configuration Settings.
+    
+    This class manages all application settings loaded from environment variables
+    or .env files. Settings are validated using Pydantic and provide type hints
+    for better IDE support and runtime validation.
+    """
 
     # ==================== APP CONFIG ====================
     PROJECT_NAME: str = "PowerGym API"
@@ -16,8 +30,14 @@ class Settings(BaseSettings):
     # ==================== SECURITY ====================
     SECRET_KEY: str = Field(..., description="JWT secret key")
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 300  # 5 horas
-    REFRESH_TOKEN_EXPIRE_HOURS: int = 12  # 12 horas (sesión máxima)
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(
+        default=300,
+        description="Access token expiration time in minutes (default: 5 hours)"
+    )
+    REFRESH_TOKEN_EXPIRE_HOURS: int = Field(
+        default=12,
+        description="Refresh token expiration time in hours (default: 12 hours, maximum session)"
+    )
     BIOMETRIC_ENCRYPTION_KEY: str = Field(..., description="Encryption key for biometric data")
 
     # ==================== CORS & ALLOWED ORIGINS ====================
@@ -29,7 +49,12 @@ class Settings(BaseSettings):
     
     @property
     def ALLOWED_ORIGINS(self) -> List[str]:
-        """Parse ALLOWED_ORIGINS from comma-separated string to list."""
+        """
+        Parse ALLOWED_ORIGINS from comma-separated string to list.
+        
+        Returns:
+            List of allowed origin URLs for CORS
+        """
         if not self.ALLOWED_ORIGINS_STR or self.ALLOWED_ORIGINS_STR.strip() == ',':
             return ["http://localhost:5173"]
         origins = [origin.strip() for origin in self.ALLOWED_ORIGINS_STR.split(',') if origin.strip()]
@@ -50,25 +75,29 @@ class Settings(BaseSettings):
     POSTGRES_HOST: Optional[str] = Field(None, description="PostgreSQL host")
     POSTGRES_PORT: Optional[int] = Field(None, description="PostgreSQL port")
 
-    # ==================== FACE RECOGNITION & MEDIAPIPE ====================
-    EMBEDDING_DIMENSIONS: int
+    # ==================== FACE RECOGNITION ====================
+    EMBEDDING_DIMENSIONS: int = Field(..., description="Face embedding dimensions (typically 512 for InsightFace)")
 
-    # InsightFace
-    INSIGHTFACE_MODEL: str = "buffalo_s"
-    INSIGHTFACE_DET_SIZE: int = 640
-    INSIGHTFACE_CTX_ID: int = -1  # -1 para CPU, 0 para GPU
+    # InsightFace Configuration
+    INSIGHTFACE_MODEL: str = Field(
+        default="buffalo_s",
+        description="InsightFace model name (buffalo_s, buffalo_l, etc.)"
+    )
+    INSIGHTFACE_DET_SIZE: int = Field(
+        default=640,
+        gt=0,
+        description="InsightFace detection size in pixels"
+    )
+    INSIGHTFACE_CTX_ID: int = Field(
+        default=-1,
+        description="InsightFace context ID (-1 for CPU, 0+ for GPU)"
+    )
 
     FACE_RECOGNITION_TOLERANCE: float = Field(
         default=0.6,
         ge=0.0,
         le=1.0,
-        description="Tolerance for face recognition (0.0-1.0)"
-    )
-    MEDIAPIPE_MIN_DETECTION_CONFIDENCE: float = Field(
-        default=0.5,
-        ge=0.0,
-        le=1.0,
-        description="Minimum detection confidence for MediaPipe (0.0-1.0)"
+        description="Tolerance for face recognition similarity threshold (0.0-1.0)"
     )
 
     # ==================== IMAGE PROCESSING ====================
@@ -84,7 +113,12 @@ class Settings(BaseSettings):
     
     @property
     def ALLOWED_IMAGE_FORMATS(self) -> List[str]:
-        """Parse ALLOWED_IMAGE_FORMATS from comma-separated string to list."""
+        """
+        Parse ALLOWED_IMAGE_FORMATS from comma-separated string to list.
+        
+        Returns:
+            List of allowed image format extensions (lowercase)
+        """
         if not self.ALLOWED_IMAGE_FORMATS_STR or self.ALLOWED_IMAGE_FORMATS_STR.strip() == ',':
             return ["jpg", "jpeg", "png", "webp"]
         formats = [fmt.strip().lower() for fmt in self.ALLOWED_IMAGE_FORMATS_STR.split(',') if fmt.strip()]
@@ -128,9 +162,16 @@ class Settings(BaseSettings):
     TELEGRAM_ENABLED: bool = Field(default=True, description="Enable Telegram notifications")
 
     class Config:
-        # Load environment-specific .env file
-        # Priority: ENV_FILE env var > .env > .env.{ENVIRONMENT}
-        # Note: .env takes priority over .env.{ENVIRONMENT} to allow manual override
+        """
+        Pydantic configuration for Settings.
+        
+        Environment file loading priority:
+        1. ENV_FILE environment variable (if set)
+        2. .env file (if exists)
+        3. .env.{ENVIRONMENT} file (if exists)
+        
+        Note: .env takes priority over .env.{ENVIRONMENT} to allow manual override.
+        """
         env_file = os.getenv(
             "ENV_FILE",
             ".env" if os.path.exists(".env") 
@@ -139,7 +180,7 @@ class Settings(BaseSettings):
                   else None)
         )
         case_sensitive = True
-        extra = "ignore"  # Ignora variables de entorno no definidas
+        extra = "ignore"  # Ignore undefined environment variables
 
 
 settings = Settings()
