@@ -47,13 +47,13 @@ echo ""
 # Check prerequisites
 echo -e "${YELLOW}Checking prerequisites...${NC}"
 command -v docker >/dev/null 2>&1 || { echo -e "${RED}Error: docker is not installed${NC}" >&2; exit 1; }
-command -v docker-compose >/dev/null 2>&1 || { echo -e "${RED}Error: docker-compose is not installed${NC}" >&2; exit 1; }
+docker compose version >/dev/null 2>&1 || { echo -e "${RED}Error: docker compose is not installed${NC}" >&2; exit 1; }
 echo -e "${GREEN}✓ Prerequisites OK${NC}"
 echo ""
 
 # Stop containers gracefully
 echo -e "${YELLOW}Stopping containers...${NC}"
-docker-compose down
+docker compose down
 echo -e "${GREEN}✓ Containers stopped${NC}"
 echo ""
 
@@ -61,23 +61,23 @@ echo ""
 echo -e "${YELLOW}Rebuilding backend image...${NC}"
 if [ -n "$NO_CACHE" ]; then
     echo "Building without cache (this will take longer)..."
-    docker-compose build --no-cache backend
+    docker compose build --no-cache backend
 else
     echo "Building with cache (faster)..."
-    docker-compose build backend
+    docker compose build backend
 fi
 echo -e "${GREEN}✓ Image rebuilt${NC}"
 echo ""
 
 # Start containers
 echo -e "${YELLOW}Starting containers...${NC}"
-docker-compose up -d
+docker compose up -d
 echo -e "${GREEN}✓ Containers started${NC}"
 echo ""
 
 # Show backend logs
 echo -e "${YELLOW}Backend logs (last 50 lines):${NC}"
-docker-compose logs --tail=50 backend
+docker compose logs --tail=50 backend
 
 echo ""
 echo -e "${GREEN}========================================${NC}"
