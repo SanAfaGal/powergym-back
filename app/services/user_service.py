@@ -1,171 +1,456 @@
+"""
+User service for PowerGym API.
+
+This module provides business logic for user management operations,
+including authentication, authorization, and user CRUD operations.
+"""
+
+from typing import List, Optional
+import logging
+
 from sqlalchemy.orm import Session
+
 from app.schemas.user import User, UserCreate, UserInDB, UserUpdate, UserRole
 from app.core.security import get_password_hash, verify_password
 from app.core.config import settings
 from app.repositories.user_repository import UserRepository
 from app.db.models import UserModel, UserRoleEnum
+from app.utils.mappers import model_to_user_schema, model_to_user_in_db_schema
+from app.utils.exceptions import NotFoundError, ConflictError, InternalServerError
+
+logger = logging.getLogger(__name__)
+
 
 class UserService:
-    @staticmethod
-    def initialize_super_admin(db: Session):
-        existing_user = UserRepository.get_by_username(db, settings.SUPER_ADMIN_USERNAME)
+    """
+    Service for user-related business logic.
 
-        if not existing_user:
-            hashed_password = get_password_hash(settings.SUPER_ADMIN_PASSWORD)
-            UserRepository.create(
-                db=db,
-                username=settings.SUPER_ADMIN_USERNAME,
-                email=settings.SUPER_ADMIN_EMAIL,
-                full_name=settings.SUPER_ADMIN_FULL_NAME,
-                hashed_password=hashed_password,
-                role=UserRoleEnum.ADMIN,
-                disabled=False
-            )
+    Handles user authentication, authorization, and all CRUD operations
+    for user management.
+    """
 
     @staticmethod
-    def get_user_by_username(db: Session, username: str) -> UserInDB | None:
-        user_model = UserRepository.get_by_username(db, username)
-        if user_model:
-            return UserInDB(
-                username=user_model.username,
-                email=user_model.email,
-                full_name=user_model.full_name,
-                role=UserRole(user_model.role.value),
-                disabled=user_model.disabled,
-                hashed_password=user_model.hashed_password
+    def initialize_super_admin(db: Session) -> None:
+        """
+        Initialize the super admin user on application startup.
+
+        Creates the super admin user if it doesn't exist, using credentials
+        from environment variables.
+
+        Args:
+            db: Database session
+        """
+        try:
+            existing_user = UserRepository.get_by_username(
+                db, settings.SUPER_ADMIN_USERNAME
             )
-        return None
+
+            if not existing_user:
+                hashed_password = get_password_hash(settings.SUPER_ADMIN_PASSWORD)
+                UserRepository.create(
+                    db=db,
+                    username=settings.SUPER_ADMIN_USERNAME,
+                    email=settings.SUPER_ADMIN_EMAIL,
+                    full_name=settings.SUPER_ADMIN_FULL_NAME,
+                    hashed_password=hashed_password,
+                    role=UserRoleEnum.ADMIN,
+                    disabled=False,
+                )
+                logger.info("Super admin user created successfully")
+            else:
+                logger.debug("Super admin user already exists")
+
+        except Exception as e:
+            logger.error(
+                "Error initializing super admin: %s", str(e), exc_info=True
+            )
+            # Don't raise - allow app to start even if super admin creation fails
+            # Admin can be created manually if needed
 
     @staticmethod
-    def get_user_by_email(db: Session, email: str) -> UserInDB | None:
-        user_model = UserRepository.get_by_email(db, email)
-        if user_model:
-            return UserInDB(
-                username=user_model.username,
-                email=user_model.email,
-                full_name=user_model.full_name,
-                role=UserRole(user_model.role.value),
-                disabled=user_model.disabled,
-                hashed_password=user_model.hashed_password
+    def get_user_by_username(db: Session, username: str) -> Optional[UserInDB]:
+        """
+        Retrieve a user by their username.
+
+        Args:
+            db: Database session
+            username: Username to search for
+
+        Returns:
+            UserInDB schema instance if found, None otherwise
+        """
+        try:
+            user_model = UserRepository.get_by_username(db, username)
+            if user_model:
+                return model_to_user_in_db_schema(user_model)
+            return None
+
+        except Exception as e:
+            logger.error(
+                "Error retrieving user by username '%s': %s",
+                username,
+                str(e),
+                exc_info=True,
             )
-        return None
+            raise InternalServerError(
+                detail=f"Failed to retrieve user: {str(e)}"
+            ) from e
+
+    @staticmethod
+    def get_user_by_email(db: Session, email: str) -> Optional[UserInDB]:
+        """
+        Retrieve a user by their email address.
+
+        Args:
+            db: Database session
+            email: Email address to search for
+
+        Returns:
+            UserInDB schema instance if found, None otherwise
+        """
+        try:
+            user_model = UserRepository.get_by_email(db, email)
+            if user_model:
+                return model_to_user_in_db_schema(user_model)
+            return None
+
+        except Exception as e:
+            logger.error(
+                "Error retrieving user by email '%s': %s",
+                email,
+                str(e),
+                exc_info=True,
+            )
+            raise InternalServerError(
+                detail=f"Failed to retrieve user: {str(e)}"
+            ) from e
 
     @staticmethod
     def create_user(db: Session, user_data: UserCreate) -> User:
-        hashed_password = get_password_hash(user_data.password)
+        """
+        Create a new user account.
 
-        role_enum = UserRoleEnum.ADMIN if user_data.role == UserRole.ADMIN else UserRoleEnum.EMPLOYEE
+        Args:
+            db: Database session
+            user_data: User creation data
 
-        user_model = UserRepository.create(
-            db=db,
-            username=user_data.username,
-            email=user_data.email,
-            full_name=user_data.full_name,
-            hashed_password=hashed_password,
-            role=role_enum,
-            disabled=False
-        )
+        Returns:
+            Created User schema instance
 
-        return User(
-            username=user_model.username,
-            email=user_model.email,
-            full_name=user_model.full_name,
-            role=UserRole(user_model.role.value),
-            disabled=user_model.disabled
-        )
+        Raises:
+            ConflictError: If username or email already exists
+            InternalServerError: If user creation fails
+        """
+        try:
+            hashed_password = get_password_hash(user_data.password)
+
+            role_enum = (
+                UserRoleEnum.ADMIN
+                if user_data.role == UserRole.ADMIN
+                else UserRoleEnum.EMPLOYEE
+            )
+
+            user_model = UserRepository.create(
+                db=db,
+                username=user_data.username,
+                email=user_data.email,
+                full_name=user_data.full_name,
+                hashed_password=hashed_password,
+                role=role_enum,
+                disabled=False,
+            )
+
+            logger.info("User created successfully: %s", user_data.username)
+            return model_to_user_schema(user_model)
+
+        except Exception as e:
+            logger.error(
+                "Error creating user '%s': %s", user_data.username, str(e), exc_info=True
+            )
+            raise InternalServerError(
+                detail=f"Failed to create user: {str(e)}"
+            ) from e
 
     @staticmethod
-    def update_user(db: Session, username: str, user_update: UserUpdate) -> User | None:
-        update_dict = {}
-        if user_update.email is not None:
-            update_dict["email"] = user_update.email
-        if user_update.full_name is not None:
-            update_dict["full_name"] = user_update.full_name
+    def update_user(
+        db: Session, username: str, user_update: UserUpdate
+    ) -> Optional[User]:
+        """
+        Update an existing user's information.
 
-        if not update_dict:
-            return UserService.get_user_by_username(db, username)
+        Args:
+            db: Database session
+            username: Username of the user to update
+            user_update: User update data
 
-        user_model = UserRepository.update(db, username, **update_dict)
+        Returns:
+            Updated User schema instance if found, None otherwise
 
-        if user_model:
-            return User(
-                username=user_model.username,
-                email=user_model.email,
-                full_name=user_model.full_name,
-                role=UserRole(user_model.role.value),
-                disabled=user_model.disabled
+        Raises:
+            InternalServerError: If update fails
+        """
+        try:
+            update_dict = {}
+            if user_update.email is not None:
+                update_dict["email"] = user_update.email
+            if user_update.full_name is not None:
+                update_dict["full_name"] = user_update.full_name
+
+            if not update_dict:
+                # No updates provided, return current user
+                return UserService.get_user_by_username(db, username)
+
+            user_model = UserRepository.update(db, username, **update_dict)
+
+            if user_model:
+                logger.info("User updated successfully: %s", username)
+                return model_to_user_schema(user_model)
+
+            return None
+
+        except Exception as e:
+            logger.error(
+                "Error updating user '%s': %s", username, str(e), exc_info=True
             )
-        return None
+            raise InternalServerError(
+                detail=f"Failed to update user: {str(e)}"
+            ) from e
 
     @staticmethod
     def change_password(db: Session, username: str, new_password: str) -> bool:
-        hashed_password = get_password_hash(new_password)
-        user_model = UserRepository.update(db, username, hashed_password=hashed_password)
-        return user_model is not None
+        """
+        Change a user's password.
+
+        Args:
+            db: Database session
+            username: Username of the user
+            new_password: New password (will be hashed)
+
+        Returns:
+            True if password was changed successfully, False otherwise
+
+        Raises:
+            InternalServerError: If password change fails
+        """
+        try:
+            hashed_password = get_password_hash(new_password)
+            user_model = UserRepository.update(
+                db, username, hashed_password=hashed_password
+            )
+
+            if user_model:
+                logger.info("Password changed successfully for user: %s", username)
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.error(
+                "Error changing password for user '%s': %s",
+                username,
+                str(e),
+                exc_info=True,
+            )
+            raise InternalServerError(
+                detail=f"Failed to change password: {str(e)}"
+            ) from e
 
     @staticmethod
-    def disable_user(db: Session, username: str) -> User | None:
-        user_model = UserRepository.update(db, username, disabled=True)
-        if user_model:
-            return User(
-                username=user_model.username,
-                email=user_model.email,
-                full_name=user_model.full_name,
-                role=UserRole(user_model.role.value),
-                disabled=user_model.disabled
+    def disable_user(db: Session, username: str) -> Optional[User]:
+        """
+        Disable a user account (soft delete).
+
+        Args:
+            db: Database session
+            username: Username of the user to disable
+
+        Returns:
+            Updated User schema instance if found, None otherwise
+
+        Raises:
+            InternalServerError: If disable operation fails
+        """
+        try:
+            user_model = UserRepository.update(db, username, disabled=True)
+            if user_model:
+                logger.info("User disabled successfully: %s", username)
+                return model_to_user_schema(user_model)
+            return None
+
+        except Exception as e:
+            logger.error(
+                "Error disabling user '%s': %s", username, str(e), exc_info=True
             )
-        return None
+            raise InternalServerError(
+                detail=f"Failed to disable user: {str(e)}"
+            ) from e
 
     @staticmethod
-    def enable_user(db: Session, username: str) -> User | None:
-        user_model = UserRepository.update(db, username, disabled=False)
-        if user_model:
-            return User(
-                username=user_model.username,
-                email=user_model.email,
-                full_name=user_model.full_name,
-                role=UserRole(user_model.role.value),
-                disabled=user_model.disabled
+    def enable_user(db: Session, username: str) -> Optional[User]:
+        """
+        Enable a previously disabled user account.
+
+        Args:
+            db: Database session
+            username: Username of the user to enable
+
+        Returns:
+            Updated User schema instance if found, None otherwise
+
+        Raises:
+            InternalServerError: If enable operation fails
+        """
+        try:
+            user_model = UserRepository.update(db, username, disabled=False)
+            if user_model:
+                logger.info("User enabled successfully: %s", username)
+                return model_to_user_schema(user_model)
+            return None
+
+        except Exception as e:
+            logger.error(
+                "Error enabling user '%s': %s", username, str(e), exc_info=True
             )
-        return None
+            raise InternalServerError(
+                detail=f"Failed to enable user: {str(e)}"
+            ) from e
 
     @staticmethod
-    def change_user_role(db: Session, username: str, new_role: UserRole) -> User | None:
-        role_enum = UserRoleEnum.ADMIN if new_role == UserRole.ADMIN else UserRoleEnum.EMPLOYEE
-        user_model = UserRepository.update(db, username, role=role_enum)
-        if user_model:
-            return User(
-                username=user_model.username,
-                email=user_model.email,
-                full_name=user_model.full_name,
-                role=UserRole(user_model.role.value),
-                disabled=user_model.disabled
+    def change_user_role(
+        db: Session, username: str, new_role: UserRole
+    ) -> Optional[User]:
+        """
+        Change a user's role.
+
+        Args:
+            db: Database session
+            username: Username of the user
+            new_role: New role to assign
+
+        Returns:
+            Updated User schema instance if found, None otherwise
+
+        Raises:
+            InternalServerError: If role change fails
+        """
+        try:
+            role_enum = (
+                UserRoleEnum.ADMIN
+                if new_role == UserRole.ADMIN
+                else UserRoleEnum.EMPLOYEE
             )
-        return None
+            user_model = UserRepository.update(db, username, role=role_enum)
+
+            if user_model:
+                logger.info(
+                    "User role changed successfully for '%s': %s",
+                    username,
+                    new_role.value,
+                )
+                return model_to_user_schema(user_model)
+
+            return None
+
+        except Exception as e:
+            logger.error(
+                "Error changing role for user '%s': %s",
+                username,
+                str(e),
+                exc_info=True,
+            )
+            raise InternalServerError(
+                detail=f"Failed to change user role: {str(e)}"
+            ) from e
 
     @staticmethod
     def delete_user(db: Session, username: str) -> bool:
-        return UserRepository.delete(db, username)
+        """
+        Delete a user account (hard delete).
 
-    @staticmethod
-    def get_all_users(db: Session) -> list[User]:
-        user_models = UserRepository.get_all(db)
-        return [
-            User(
-                username=user.username,
-                email=user.email,
-                full_name=user.full_name,
-                role=UserRole(user.role.value),
-                disabled=user.disabled
+        Args:
+            db: Database session
+            username: Username of the user to delete
+
+        Returns:
+            True if deletion was successful, False otherwise
+
+        Raises:
+            InternalServerError: If deletion fails
+        """
+        try:
+            result = UserRepository.delete(db, username)
+            if result:
+                logger.info("User deleted successfully: %s", username)
+            return result
+
+        except Exception as e:
+            logger.error(
+                "Error deleting user '%s': %s", username, str(e), exc_info=True
             )
-            for user in user_models
-        ]
+            raise InternalServerError(
+                detail=f"Failed to delete user: {str(e)}"
+            ) from e
 
     @staticmethod
-    def authenticate_user(db: Session, username: str, password: str) -> UserInDB | None:
-        user = UserService.get_user_by_username(db, username)
-        if not user:
+    def get_all_users(db: Session) -> List[User]:
+        """
+        Retrieve all users in the system.
+
+        Args:
+            db: Database session
+
+        Returns:
+            List of User schema instances
+
+        Raises:
+            InternalServerError: If retrieval fails
+        """
+        try:
+            user_models = UserRepository.get_all(db)
+            return [model_to_user_schema(user) for user in user_models if user]
+
+        except Exception as e:
+            logger.error("Error retrieving all users: %s", str(e), exc_info=True)
+            raise InternalServerError(
+                detail=f"Failed to retrieve users: {str(e)}"
+            ) from e
+
+    @staticmethod
+    def authenticate_user(
+        db: Session, username: str, password: str
+    ) -> Optional[UserInDB]:
+        """
+        Authenticate a user with username and password.
+
+        Args:
+            db: Database session
+            username: Username to authenticate
+            password: Plain text password
+
+        Returns:
+            UserInDB schema instance if authentication succeeds, None otherwise
+        """
+        try:
+            user = UserService.get_user_by_username(db, username)
+            if not user:
+                logger.warning("Authentication failed: user '%s' not found", username)
+                return None
+
+            if not verify_password(password, user.hashed_password):
+                logger.warning(
+                    "Authentication failed: incorrect password for user '%s'", username
+                )
+                return None
+
+            logger.info("User authenticated successfully: %s", username)
+            return user
+
+        except Exception as e:
+            logger.error(
+                "Error authenticating user '%s': %s",
+                username,
+                str(e),
+                exc_info=True,
+            )
+            # Don't raise - return None to indicate authentication failure
             return None
-        if not verify_password(password, user.hashed_password):
-            return None
-        return user

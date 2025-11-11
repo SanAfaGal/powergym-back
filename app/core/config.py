@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSIONS: int
 
     # InsightFace
-    INSIGHTFACE_MODEL: str = "buffalo_l"  # buffalo_s, buffalo_l, buffalo_sc
+    INSIGHTFACE_MODEL: str = "buffalo_s"
     INSIGHTFACE_DET_SIZE: int = 640
     INSIGHTFACE_CTX_ID: int = -1  # -1 para CPU, 0 para GPU
 
