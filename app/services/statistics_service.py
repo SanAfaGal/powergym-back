@@ -380,10 +380,11 @@ class StatisticsService:
             or 0
         )
 
-        # Peak hour
+            # Peak hour - Convert UTC to Colombia timezone before extracting hour
+        # PostgreSQL: AT TIME ZONE converts UTC to the specified timezone
         peak_hour_result = (
             self.db.query(
-                extract("hour", AttendanceModel.check_in).label("hour"),
+                extract("hour", func.timezone('America/Bogota', AttendanceModel.check_in)).label("hour"),
                 func.count(AttendanceModel.id).label("count"),
             )
             .filter(
@@ -392,7 +393,7 @@ class StatisticsService:
                     AttendanceModel.check_in <= period_end_utc,
                 )
             )
-            .group_by(extract("hour", AttendanceModel.check_in))
+            .group_by(extract("hour", func.timezone('America/Bogota', AttendanceModel.check_in)))
             .order_by(func.count(AttendanceModel.id).desc())
             .first()
         )
