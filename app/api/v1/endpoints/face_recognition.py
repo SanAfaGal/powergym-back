@@ -41,21 +41,40 @@ def _validate_client_active(db: Session, client_id: UUID) -> None:
         client_id: UUID of the client to validate
         
     Raises:
-        HTTPException: If client not found (404) or not active (400)
+        HTTPException: If client not found (404), not active (400), or database error (500)
     """
-    client = ClientService.get_client_by_id(db, client_id)
-    if not client:
-        logger.warning(f"Client not found: {client_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Client not found"
-        )
+    try:
+        logger.debug(f"Validating client {client_id} exists and is active")
+        client = ClientService.get_client_by_id(db, client_id)
+        
+        if not client:
+            logger.warning(f"Client not found: {client_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Client not found"
+            )
 
-    if not client.is_active:
-        logger.warning(f"Client is not active: {client_id}")
+        if not client.is_active:
+            logger.warning(f"Client is not active: {client_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Client is not active"
+            )
+        
+        logger.debug(f"Client {client_id} validation passed: exists and is active")
+        
+    except HTTPException:
+        # Re-raise HTTPException as-is
+        raise
+    except Exception as e:
+        # Catch any other exceptions (e.g., database errors)
+        logger.error(
+            f"Error validating client {client_id}: {e}",
+            exc_info=True
+        )
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Client is not active"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error occurred while validating client. Please try again later."
         )
 
 @router.post(
@@ -102,7 +121,7 @@ def register_client_face(
     Raises:
         HTTPException: If client validation fails or registration fails
     """
-    logger.info(f"Face registration requested for client {request.client_id} by user {current_user.id}")
+    logger.info(f"Face registration requested for client {request.client_id} by user {current_user.username}")
     _validate_client_active(db, request.client_id)
 
     result = FaceRecognitionService.register_face(
@@ -174,7 +193,7 @@ def authenticate_client_face(
     Raises:
         HTTPException: If authentication fails (401) or image processing fails (400)
     """
-    logger.info(f"Face authentication requested by user {current_user.id}")
+    logger.info(f"Face authentication requested by user {current_user.username}")
     result = FaceRecognitionService.authenticate_face(
         db=db,
         image_base64=request.image_base64
@@ -240,7 +259,7 @@ def compare_faces(
     Raises:
         HTTPException: If image processing fails or comparison fails (400)
     """
-    logger.info(f"Face comparison requested by user {current_user.id}")
+    logger.info(f"Face comparison requested by user {current_user.username}")
     result = FaceRecognitionService.compare_two_faces(
         image_base64_1=request.image_base64_1,
         image_base64_2=request.image_base64_2
@@ -306,30 +325,156 @@ def update_client_face(
     Raises:
         HTTPException: If client validation fails or update fails
     """
-    logger.info(f"Face update requested for client {request.client_id} by user {current_user.id}")
-    _validate_client_active(db, request.client_id)
-
-    result = FaceRecognitionService.update_face(
-        db=db,
-        client_id=request.client_id,
-        image_base64=request.image_base64
-    )
-
-    if not result.get("success"):
-        error_msg = result.get("error", "Failed to update face")
-        logger.error(f"Face update failed for client {request.client_id}: {error_msg}")
+    # Extract and validate request data
+    try:
+        client_id = request.client_id
+        user_id = current_user.username
+        image_base64 = request.image_base64
+        image_size = len(image_base64) if image_base64 else 0
+        
+        logger.info(
+            f"Face update requested - client_id: {client_id}, user_id: {user_id}, "
+            f"image_size: {image_size} bytes, client_id_type: {type(client_id)}"
+        )
+        
+        # Validate client_id is not None
+        if client_id is None:
+            logger.error("client_id is None in request")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="client_id is required"
+            )
+        
+        # Validate image_base64 is not None or empty
+        if not image_base64 or len(image_base64.strip()) == 0:
+            logger.error(f"image_base64 is empty for client {client_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="image_base64 cannot be empty"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error extracting request data: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error_msg
+            detail=f"Invalid request data: {str(e)}"
         )
+    
+    try:
+        # Validate client exists and is active
+        logger.debug(f"Validating client {client_id} is active")
+        _validate_client_active(db, client_id)
+        logger.debug(f"Client {client_id} validation passed")
 
-    logger.info(f"Face updated successfully for client {request.client_id}")
-    return FaceRegistrationResponse(
-        success=True,
-        message="Face updated successfully",
-        biometric_id=result.get("biometric_id"),
-        client_id=result.get("client_id")
-    )
+        # Update face biometric
+        logger.debug(f"Calling FaceRecognitionService.update_face for client {client_id}")
+        result = FaceRecognitionService.update_face(
+            db=db,
+            client_id=client_id,
+            image_base64=image_base64
+        )
+        logger.debug(f"FaceRecognitionService.update_face returned result: {result}")
+
+        # Validate result structure
+        if not isinstance(result, dict):
+            error_msg = f"Invalid result type from update_face: {type(result)}"
+            logger.error(f"Face update failed for client {client_id}: {error_msg}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal server error: Invalid response from face recognition service"
+            )
+
+        # Check if update was successful
+        if not result.get("success"):
+            error_msg = result.get("error", "Failed to update face")
+            logger.error(
+                f"Face update failed for client {client_id} by user {user_id}: {error_msg}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_msg
+            )
+
+        # Validate and extract result values
+        biometric_id_str = result.get("biometric_id")
+        client_id_str = result.get("client_id")
+        
+        if not biometric_id_str:
+            logger.error(
+                f"Face update succeeded but biometric_id is missing in result for client {client_id}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal server error: Missing biometric_id in response"
+            )
+        
+        if not client_id_str:
+            logger.error(
+                f"Face update succeeded but client_id is missing in result for client {client_id}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal server error: Missing client_id in response"
+            )
+
+        # Convert string UUIDs to UUID objects
+        try:
+            biometric_id = UUID(biometric_id_str) if isinstance(biometric_id_str, str) else biometric_id_str
+            result_client_id = UUID(client_id_str) if isinstance(client_id_str, str) else client_id_str
+        except (ValueError, TypeError) as e:
+            logger.error(
+                f"Invalid UUID format in result for client {client_id}: "
+                f"biometric_id={biometric_id_str}, client_id={client_id_str}, error={e}",
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal server error: Invalid UUID format in response"
+            )
+
+        # Verify client_id matches
+        if result_client_id != client_id:
+            logger.warning(
+                f"Client ID mismatch: requested {client_id}, got {result_client_id}"
+            )
+
+        logger.info(
+            f"Face updated successfully for client {client_id} by user {user_id}, "
+            f"biometric_id: {biometric_id}"
+        )
+        
+        return FaceRegistrationResponse(
+            success=True,
+            message="Face updated successfully",
+            biometric_id=biometric_id,
+            client_id=result_client_id
+        )
+        
+    except HTTPException:
+        # Re-raise HTTPException as-is (already properly formatted)
+        raise
+    except ValueError as ve:
+        # Handle validation errors
+        logger.error(
+            f"Validation error updating face for client {client_id} by user {user_id}: {ve}",
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Validation error: {str(ve)}"
+        )
+    except Exception as e:
+        # Catch all other exceptions and return 500
+        logger.error(
+            f"Unexpected error updating face for client {client_id} by user {user_id}: {e}",
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error occurred while updating face biometric. Please try again later."
+        )
 
 @router.delete(
     "/{client_id}",
@@ -372,7 +517,7 @@ def delete_client_face(
     Raises:
         HTTPException: If client not found (404) or deletion fails (400)
     """
-    logger.info(f"Face deletion requested for client {client_id} by user {current_user.id}")
+    logger.info(f"Face deletion requested for client {client_id} by user {current_user.username}")
     
     client = ClientService.get_client_by_id(db, client_id)
     if not client:

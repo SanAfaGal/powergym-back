@@ -7,7 +7,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 async def http_exception_handler(request: Request, exc: HTTPException):
-    return JSONResponse(
+    # CORS headers will be added by CORSMiddleware, but we ensure response is JSONResponse
+    response = JSONResponse(
         status_code=exc.status_code,
         content={
             "success": False,
@@ -16,6 +17,11 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             "request_id": getattr(request.state, "request_id", None)
         },
     )
+    # Log the error for debugging
+    logger.warning(
+        f"HTTPException: {exc.status_code} - {exc.detail} - Path: {request.url.path}"
+    )
+    return response
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(
@@ -33,8 +39,12 @@ async def generic_exception_handler(request: Request, exc: Exception):
     import traceback
     error_detail = f"{type(exc).__name__}: {str(exc)}"
     traceback_str = ''.join(traceback.format_tb(exc.__traceback__))
-    logger.error(f"Unhandled exception: {error_detail}\n{traceback_str}", exc_info=True)
-    return JSONResponse(
+    logger.error(
+        f"Unhandled exception: {error_detail}\n{traceback_str}\nPath: {request.url.path}\nMethod: {request.method}",
+        exc_info=True
+    )
+    # CORS headers will be added by CORSMiddleware
+    response = JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "success": False,
@@ -45,6 +55,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
             "request_id": getattr(request.state, "request_id", None)
         },
     )
+    return response
 
 def setup_exception_handlers(app):
     app.add_exception_handler(HTTPException, http_exception_handler)
