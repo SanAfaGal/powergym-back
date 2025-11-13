@@ -24,8 +24,8 @@ RUN pip install uv && uv sync --frozen --no-dev
 # Copiar el código fuente
 COPY . .
 
-# Hacer el entrypoint ejecutable
-RUN chmod +x /app/entrypoint.sh
+# Normalizar line endings de entrypoint.sh (CRLF -> LF) y hacerlo ejecutable
+RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 # Exponer puerto
 EXPOSE 8000
