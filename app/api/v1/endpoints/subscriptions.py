@@ -61,7 +61,6 @@ def create_subscription(
     SubscriptionValidator.validate_plan_is_active(plan)
     SubscriptionValidator.validate_plan_duration(plan)
 
-    SubscriptionValidator.validate_start_date_not_in_past(subscription_input.start_date)
     SubscriptionValidator.validate_no_active_subscription(db, client_id)
 
     # Build and create
