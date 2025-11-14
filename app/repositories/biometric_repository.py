@@ -110,7 +110,8 @@ class BiometricRepository:
         embedding_vector: List[float],
         biometric_type: BiometricTypeEnum,
         limit: int = 10,
-        distance_threshold: float = 0.6
+        distance_threshold: float = 0.6,
+        exclude_client_id: Optional[UUID] = None
     ) -> List[Tuple[ClientBiometricModel, float]]:
         """
         Search for similar embeddings using vector similarity.
@@ -122,30 +123,49 @@ class BiometricRepository:
             biometric_type: Type of biometric to search
             limit: Maximum number of results
             distance_threshold: Maximum distance for matches (lower = more similar)
+            exclude_client_id: Optional client ID to exclude from results
 
         Returns:
             List of tuples (biometric, distance) ordered by similarity
         """
-        query = text("""
-            SELECT *, embedding_vector <=> :embedding_vector as distance
-            FROM client_biometrics
-            WHERE type = :biometric_type
-              AND is_active = true
-              AND embedding_vector IS NOT NULL
-              AND embedding_vector <=> :embedding_vector <= :distance_threshold
-            ORDER BY distance
-            LIMIT :limit
-        """)
-
-        result = db.execute(
-            query,
-            {
+        if exclude_client_id:
+            query = text("""
+                SELECT *, embedding_vector <=> :embedding_vector as distance
+                FROM client_biometrics
+                WHERE type = :biometric_type
+                  AND is_active = true
+                  AND embedding_vector IS NOT NULL
+                  AND client_id != :exclude_client_id
+                  AND embedding_vector <=> :embedding_vector <= :distance_threshold
+                ORDER BY distance
+                LIMIT :limit
+            """)
+            params = {
+                "embedding_vector": str(embedding_vector),
+                "biometric_type": biometric_type.value,
+                "distance_threshold": distance_threshold,
+                "limit": limit,
+                "exclude_client_id": str(exclude_client_id)
+            }
+        else:
+            query = text("""
+                SELECT *, embedding_vector <=> :embedding_vector as distance
+                FROM client_biometrics
+                WHERE type = :biometric_type
+                  AND is_active = true
+                  AND embedding_vector IS NOT NULL
+                  AND embedding_vector <=> :embedding_vector <= :distance_threshold
+                ORDER BY distance
+                LIMIT :limit
+            """)
+            params = {
                 "embedding_vector": str(embedding_vector),
                 "biometric_type": biometric_type.value,
                 "distance_threshold": distance_threshold,
                 "limit": limit
             }
-        )
+
+        result = db.execute(query, params)
 
         results = []
         for row in result.mappings():

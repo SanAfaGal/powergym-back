@@ -175,7 +175,8 @@ class FaceDatabase:
         db: Session,
         embedding: List[float],
         limit: int = 10,
-        distance_threshold: float = 0.6
+        distance_threshold: float = 0.6,
+        exclude_client_id: Optional[UUID] = None
     ) -> List[Dict[str, Any]]:
         """
         Search for similar faces using native vector similarity search.
@@ -185,6 +186,7 @@ class FaceDatabase:
             embedding: Face embedding vector to search for
             limit: Maximum number of results to return
             distance_threshold: Maximum cosine distance for matches (0.0-1.0)
+            exclude_client_id: Optional client ID to exclude from results
 
         Returns:
             List of matching biometric records with similarity scores, sorted by distance
@@ -203,14 +205,15 @@ class FaceDatabase:
                 logger.error(error_msg)
                 raise ValueError(error_msg)
 
-            logger.debug(f"Searching for similar faces with threshold {distance_threshold}, limit {limit}")
+            logger.debug(f"Searching for similar faces with threshold {distance_threshold}, limit {limit}, exclude_client_id={exclude_client_id}")
             
             results = BiometricRepository.search_similar_embeddings(
                 db=db,
                 embedding_vector=embedding,
                 biometric_type=BiometricTypeEnum.FACE,
                 limit=limit,
-                distance_threshold=distance_threshold
+                distance_threshold=distance_threshold,
+                exclude_client_id=exclude_client_id
             )
 
             matches = [

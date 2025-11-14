@@ -100,6 +100,48 @@ class Settings(BaseSettings):
         description="Tolerance for face recognition similarity threshold (0.0-1.0)"
     )
 
+    # Face Validation Configuration
+    FACE_VALIDATION_MIN_QUALITY_SCORE: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Minimum quality score for face validation (0.0-1.0)"
+    )
+    FACE_VALIDATION_MIN_FACE_SIZE_RATIO: float = Field(
+        default=0.05,
+        gt=0.0,
+        le=1.0,
+        description="Minimum face size ratio relative to image area (0.0-1.0)"
+    )
+    FACE_VALIDATION_MAX_FACE_ANGLE: float = Field(
+        default=30.0,
+        gt=0.0,
+        le=90.0,
+        description="Maximum allowed face angle in degrees for frontal validation"
+    )
+    FACE_VALIDATION_MIN_AGE: int = Field(
+        default=5,
+        gt=0,
+        description="Minimum valid age for face validation"
+    )
+    FACE_VALIDATION_MAX_AGE: int = Field(
+        default=120,
+        gt=0,
+        description="Maximum valid age for face validation"
+    )
+
+    # Anti-Spoofing Configuration
+    ANTI_SPOOFING_ENABLED: bool = Field(
+        default=False,
+        description="Enable anti-spoofing detection for face registration"
+    )
+    ANTI_SPOOFING_MIN_LIVENESS_SCORE: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Minimum liveness score to pass anti-spoofing validation (0.0-1.0). Higher values are more strict. Recommended: 0.6-0.8"
+    )
+
     # ==================== IMAGE PROCESSING ====================
     MAX_IMAGE_SIZE_MB: int = Field(
         default=5,

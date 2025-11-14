@@ -13,6 +13,7 @@ import cv2
 from insightface.app import FaceAnalysis
 
 from app.core.config import settings
+from app.core.constants import ERROR_FACE_QUALITY_TOO_LOW, ERROR_FACE_TOO_SMALL
 
 logger = logging.getLogger(__name__)
 
@@ -96,10 +97,9 @@ class EmbeddingService:
             raise ValueError("No face detected in the image")
 
         if len(faces) > 1:
-            logger.warning(f"Multiple faces detected ({len(faces)}). Using the largest face.")
-            # Use the largest face instead of raising an error
-            faces = sorted(faces, key=lambda x: (x.bbox[2]-x.bbox[0]) * (x.bbox[3]-x.bbox[1]), reverse=True)
-            faces = [faces[0]]
+            logger.warning(f"Multiple faces detected ({len(faces)}). Rejecting registration.")
+            from app.core.constants import ERROR_MULTIPLE_FACES_DETECTED
+            raise ValueError(ERROR_MULTIPLE_FACES_DETECTED)
 
         # Embedding is already L2-normalized by InsightFace
         embedding = faces[0].normed_embedding
@@ -318,7 +318,7 @@ class EmbeddingService:
         """
         app = EmbeddingService._get_face_analysis()
 
-        # Convertir a BGR
+        # Convert to BGR
         if len(image_array.shape) == 3 and image_array.shape[2] == 3:
             image_bgr = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
         else:
@@ -340,7 +340,7 @@ class EmbeddingService:
         face = faces[0]
         recommendations = []
 
-        # 1. Tamaño de la cara
+        # 1. Face size
         bbox = face.bbox.astype(int)
         face_width = bbox[2] - bbox[0]
         face_height = bbox[3] - bbox[1]
@@ -348,38 +348,43 @@ class EmbeddingService:
         image_area = image_array.shape[0] * image_array.shape[1]
         face_ratio = face_area / image_area
 
-        if face_ratio < 0.05:
+        min_ratio = settings.FACE_VALIDATION_MIN_FACE_SIZE_RATIO
+        if face_ratio < min_ratio:
             recommendations.append('Face is too small - move closer to camera')
         elif face_ratio > 0.8:
             recommendations.append('Face is too close - move back from camera')
 
-        # 2. Brillo
+        # 2. Brightness
         gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-        brightness = np.mean(gray)
+        brightness = float(np.mean(gray))
 
-        if brightness < 80:
+        # Improved brightness validation with tighter range
+        if brightness < 70:  # Stricter minimum
             recommendations.append('Image is too dark - improve lighting')
-        elif brightness > 200:
+        elif brightness > 180:  # Stricter maximum
             recommendations.append('Image is too bright - reduce lighting')
+        elif not (80 <= brightness <= 160):  # Warn if outside optimal range
+            recommendations.append('Lighting could be improved for better recognition')
 
-        # 3. Nitidez (Laplacian variance)
-        laplacian = cv2.Laplacian(gray, cv2.CV_64F)
-        sharpness = laplacian.var()
+        # 3. Sharpness (Laplacian variance)
+        sharpness = float(EmbeddingService._calculate_sharpness(gray))
 
-        if sharpness < 100:
+        if sharpness < 150:  # Stricter minimum
             recommendations.append('Image is blurry - hold camera steady')
+        elif sharpness < 300:  # Warn if below optimal
+            recommendations.append('Image could be sharper for better recognition')
 
-        # 4. Score general (normalizado 0-1)
+        # 4. Overall score (normalized 0-1)
         face_score = min(face_ratio * 10, 1.0)  # Optimal around 0.1-0.3
-        brightness_score = 1.0 - abs(brightness - 140) / 140  # Optimal around 140
-        sharpness_score = min(sharpness / 500, 1.0)  # Optimal > 500
+        brightness_score = 1.0 - abs(brightness - 120) / 120  # Optimal around 120
+        sharpness_score = min(sharpness / 600, 1.0)  # Optimal > 600
 
         overall_score = (face_score + brightness_score + sharpness_score) / 3
 
         return {
             'score': float(overall_score),
-            'brightness': float(brightness),
-            'sharpness': float(sharpness),
+            'brightness': brightness,
+            'sharpness': sharpness,
             'face_size': float(face_ratio),
             'face_dimensions': {
                 'width': int(face_width),
@@ -387,6 +392,68 @@ class EmbeddingService:
             },
             'recommendations': recommendations if recommendations else ['Image quality is good']
         }
+
+    @staticmethod
+    def _calculate_sharpness(gray: np.ndarray) -> float:
+        """
+        Calculate image sharpness using Laplacian variance.
+        
+        Args:
+            gray: Grayscale image array
+            
+        Returns:
+            Sharpness score (higher = sharper)
+        """
+        try:
+            laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+            return float(laplacian.var())
+        except Exception as e:
+            logger.debug(f"Error calculating sharpness: {e}")
+            return 0.0
+
+    @staticmethod
+    def validate_face_quality(image_array: np.ndarray) -> Tuple[bool, Optional[str]]:
+        """
+        Validate face quality meets minimum requirements.
+        
+        Args:
+            image_array: Image as numpy array in RGB format
+            
+        Returns:
+            Tuple of (is_valid: bool, error_message: Optional[str])
+        """
+        try:
+            quality_data = EmbeddingService.get_face_quality_score(image_array)
+            
+            min_quality = settings.FACE_VALIDATION_MIN_QUALITY_SCORE
+            quality_score = quality_data['score']
+            
+            if quality_score < min_quality:
+                logger.warning(
+                    f"Face quality too low: score={quality_score:.3f} "
+                    f"(min: {min_quality:.3f})"
+                )
+                return False, ERROR_FACE_QUALITY_TOO_LOW
+            
+            # Also validate face size
+            face_ratio = quality_data.get('face_size', 0.0)
+            min_ratio = settings.FACE_VALIDATION_MIN_FACE_SIZE_RATIO
+            
+            if face_ratio < min_ratio:
+                logger.warning(
+                    f"Face too small: ratio={face_ratio:.4f} (min: {min_ratio:.4f})"
+                )
+                return False, ERROR_FACE_TOO_SMALL
+            
+            logger.debug(
+                f"Face quality validation passed: score={quality_score:.3f}, "
+                f"ratio={face_ratio:.4f}"
+            )
+            return True, None
+            
+        except Exception as e:
+            logger.error(f"Error validating face quality: {e}", exc_info=True)
+            return False, ERROR_FACE_QUALITY_TOO_LOW
 
     @staticmethod
     def extract_multiple_faces(image_array: np.ndarray) -> List[Dict[str, Any]]:

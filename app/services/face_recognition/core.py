@@ -9,11 +9,14 @@ and database operations.
 import logging
 from typing import Optional, Tuple, List, Dict, Any
 from uuid import UUID
+import numpy as np
 from sqlalchemy.orm import Session
 
 from .image_processor import ImageProcessor
 from .embedding import EmbeddingService
 from .database import FaceDatabase
+from .anti_spoofing import LivenessDetector
+from .human_validation import HumanFaceValidator
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +102,13 @@ class FaceRecognitionService:
         """
         Register a face biometric for a client.
 
+        This method performs comprehensive validation before registration:
+        1. Single face validation (rejects multiple faces)
+        2. Human face validation (age, gender, landmarks, angle, size)
+        3. Liveness detection (anti-spoofing)
+        4. Quality validation
+        5. Duplicate detection
+
         Args:
             db: Database session
             client_id: UUID of the client
@@ -110,8 +120,98 @@ class FaceRecognitionService:
         """
         try:
             logger.info(f"Registering face biometric for client {client_id}")
+            
+            # Decode image first
+            image_array = ImageProcessor.decode_base64_image(image_base64)
+            image_shape = image_array.shape[:2]
+            
+            # 1. Extract face encoding (includes single face validation)
+            # This will raise ValueError if multiple faces or no face detected
             embedding, thumbnail = FaceRecognitionService.extract_face_encoding(image_base64)
+            
+            # Get face object for additional validations
+            face_obj = FaceRecognitionService._get_face_object(image_array)
+            if face_obj is None:
+                logger.error("Failed to get face object for validation")
+                return {
+                    "success": False,
+                    "error": "No se pudo obtener información del rostro para validación"
+                }
+            
+            # 2. Validate human face characteristics
+            is_valid, error_msg = HumanFaceValidator.validate_face(face_obj, image_shape)
+            if not is_valid:
+                logger.warning(f"Human face validation failed for client {client_id}: {error_msg}")
+                return {
+                    "success": False,
+                    "error": error_msg or "Validación de rostro humano falló"
+                }
+            
+            # 3. Validate liveness (anti-spoofing)
+            is_live, liveness_error = LivenessDetector.check_liveness(image_array)
+            if not is_live:
+                logger.warning(f"Liveness check failed for client {client_id}: {liveness_error}")
+                return {
+                    "success": False,
+                    "error": liveness_error or "Validación de liveness falló"
+                }
+            
+            # 4. Validate face quality
+            is_valid_quality, quality_error = EmbeddingService.validate_face_quality(image_array)
+            if not is_valid_quality:
+                logger.warning(f"Face quality validation failed for client {client_id}: {quality_error}")
+                return {
+                    "success": False,
+                    "error": quality_error or "Validación de calidad falló"
+                }
+            
+            # 5. Check for duplicate faces in other clients
+            from app.core.config import settings
+            from app.core.constants import ERROR_FACE_ALREADY_REGISTERED
+            
+            tolerance = settings.FACE_RECOGNITION_TOLERANCE
+            logger.debug(f"Checking for duplicate faces with tolerance {tolerance}, excluding client {client_id}")
+            
+            similar_faces = FaceDatabase.search_similar_faces(
+                db=db,
+                embedding=embedding,
+                limit=1,
+                distance_threshold=tolerance,
+                exclude_client_id=client_id
+            )
 
+            if similar_faces:
+                # Found a matching face for another client
+                duplicate_client_id = similar_faces[0]["client_id"]
+                similarity = similar_faces[0]["similarity"]
+                logger.warning(
+                    f"Duplicate face detected: attempting to register face for client {client_id} "
+                    f"but similar face already exists for client {duplicate_client_id} "
+                    f"(similarity: {similarity:.4f})"
+                )
+                
+                # Try to get client info for better error message
+                try:
+                    client_info = FaceDatabase.get_client_info(db, duplicate_client_id)
+                    if client_info:
+                        error_msg = (
+                            f"{ERROR_FACE_ALREADY_REGISTERED}. "
+                            f"El rostro ya está registrado para el cliente: "
+                            f"{client_info.get('first_name', '')} {client_info.get('last_name', '')} "
+                            f"(DNI: {client_info.get('dni_number', 'N/A')})"
+                        )
+                    else:
+                        error_msg = ERROR_FACE_ALREADY_REGISTERED
+                except Exception as e:
+                    logger.warning(f"Could not retrieve client info for duplicate: {e}")
+                    error_msg = ERROR_FACE_ALREADY_REGISTERED
+                
+                return {
+                    "success": False,
+                    "error": error_msg
+                }
+
+            # 6. Store face biometric
             result = FaceDatabase.store_face_biometric(
                 db=db,
                 client_id=client_id,
@@ -138,6 +238,45 @@ class FaceRecognitionService:
                 "success": False,
                 "error": f"Registration failed: {str(e)}"
             }
+
+    @staticmethod
+    def _get_face_object(image_array: np.ndarray) -> Optional[Any]:
+        """
+        Get face object from InsightFace for validation purposes.
+        
+        Args:
+            image_array: Image as numpy array in RGB format
+            
+        Returns:
+            InsightFace Face object or None if no face detected
+        """
+        try:
+            from insightface.app import FaceAnalysis
+            import cv2
+            
+            app = EmbeddingService._get_face_analysis()
+            
+            # Convert to BGR
+            if len(image_array.shape) == 3 and image_array.shape[2] == 3:
+                image_bgr = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
+            else:
+                image_bgr = image_array
+            
+            faces = app.get(image_bgr)
+            
+            if len(faces) == 0:
+                logger.warning("No face detected when getting face object")
+                return None
+            
+            if len(faces) > 1:
+                # Use largest face
+                faces = sorted(faces, key=lambda x: (x.bbox[2]-x.bbox[0]) * (x.bbox[3]-x.bbox[1]), reverse=True)
+            
+            return faces[0]
+            
+        except Exception as e:
+            logger.error(f"Error getting face object: {e}", exc_info=True)
+            return None
 
     @staticmethod
     def authenticate_face(
