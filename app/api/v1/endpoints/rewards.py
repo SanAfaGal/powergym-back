@@ -1,17 +1,23 @@
+import logging
+from typing import List
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
-from uuid import UUID
-from typing import List
 
+from app.api.dependencies import get_current_active_user
+from app.core.config import settings
+from app.db.session import get_db
 from app.schemas.reward import (
     Reward,
+    RewardApplyInput,
+    RewardConfig,
     RewardEligibilityResponse,
-    RewardApplyInput
 )
-from app.services.reward_service import RewardService
-from app.api.dependencies import get_current_active_user
 from app.schemas.user import User
-from app.db.session import get_db
+from app.services.reward_service import RewardService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["rewards"])
 
@@ -104,4 +110,46 @@ def apply_reward(
     - Marks applied_at and applied_subscription_id
     """
     return RewardService.apply_reward(db, reward_id, apply_data)
+
+
+@router.get(
+    "/rewards/config",
+    response_model=RewardConfig,
+    status_code=status.HTTP_200_OK,
+    summary="Get reward configuration",
+    description="Get the current reward system configuration (attendance threshold, discount percentage, expiration days, eligible plan units). This endpoint is public and does not require authentication."
+)
+def get_reward_config() -> RewardConfig:
+    """
+    Get the current reward system configuration.
+
+    Returns the configuration values that determine:
+    - Minimum attendances required to qualify for a reward
+    - Default discount percentage
+    - Number of days until reward expires
+    - Which plan duration units are eligible for rewards
+
+    This endpoint is public and can be accessed without authentication
+    to allow the frontend to display accurate reward rules.
+
+    Returns:
+        RewardConfig: Current reward configuration settings
+
+    Raises:
+        HTTPException: If there's an error retrieving configuration
+    """
+    try:
+        return RewardConfig(
+            attendance_threshold=settings.REWARD_ATTENDANCE_THRESHOLD,
+            discount_percentage=settings.REWARD_DISCOUNT_PERCENTAGE,
+            expiration_days=settings.REWARD_EXPIRATION_DAYS,
+            eligible_plan_units=settings.REWARD_ELIGIBLE_PLAN_UNITS
+        )
+    except Exception as e:
+        # Log error but return a generic message to avoid exposing internal details
+        logger.error(f"Error retrieving reward configuration: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error retrieving reward configuration"
+        )
 

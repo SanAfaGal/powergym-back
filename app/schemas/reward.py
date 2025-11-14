@@ -1,9 +1,10 @@
-from pydantic import BaseModel, Field
-from enum import Enum
 from datetime import date, datetime
-from uuid import UUID
-from typing import Optional
 from decimal import Decimal
+from enum import Enum
+from typing import List, Optional
+from uuid import UUID
+
+from pydantic import BaseModel, Field
 
 
 class RewardStatus(str, Enum):
@@ -82,6 +83,46 @@ class RewardEligibilityResponse(BaseModel):
                 "attendance_count": 22,
                 "reward_id": "123e4567-e89b-12d3-a456-426614174001",
                 "expires_at": "2025-11-10T00:00:00Z"
+            }]
+        }
+    }
+
+
+class RewardConfig(BaseModel):
+    """
+    Reward system configuration.
+    
+    Exposes the current reward configuration settings to the frontend.
+    This allows the frontend to display accurate reward rules without hardcoding values.
+    """
+    attendance_threshold: int = Field(
+        ...,
+        ge=1,
+        description="Minimum number of attendances required to qualify for a reward"
+    )
+    discount_percentage: float = Field(
+        ...,
+        ge=0.01,
+        le=100.0,
+        description="Default discount percentage for rewards (0.01 to 100.0)"
+    )
+    expiration_days: int = Field(
+        ...,
+        gt=0,
+        description="Number of days until a reward expires after becoming eligible"
+    )
+    eligible_plan_units: List[str] = Field(
+        ...,
+        description="List of plan duration units eligible for rewards (e.g., ['month', 'week'])"
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{
+                "attendance_threshold": 20,
+                "discount_percentage": 20.0,
+                "expiration_days": 7,
+                "eligible_plan_units": ["month"]
             }]
         }
     }

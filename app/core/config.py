@@ -161,6 +161,41 @@ class Settings(BaseSettings):
     TELEGRAM_CHAT_ID: Optional[str] = Field(None, description="Telegram chat ID for notifications")
     TELEGRAM_ENABLED: bool = Field(default=True, description="Enable Telegram notifications")
 
+    # ==================== REWARDS CONFIGURATION ====================
+    REWARD_ATTENDANCE_THRESHOLD: int = Field(
+        default=20,
+        gt=0,
+        description="Minimum number of attendances required to qualify for a reward"
+    )
+    REWARD_DISCOUNT_PERCENTAGE: float = Field(
+        default=20.0,
+        ge=0.01,
+        le=100.0,
+        description="Default discount percentage for rewards (0.01 to 100.0)"
+    )
+    REWARD_EXPIRATION_DAYS: int = Field(
+        default=7,
+        gt=0,
+        description="Number of days until a reward expires after becoming eligible"
+    )
+    REWARD_ELIGIBLE_PLAN_UNITS_STR: str = Field(
+        default="month",
+        description="Comma-separated list of plan duration units eligible for rewards (e.g., 'month,week')"
+    )
+
+    @property
+    def REWARD_ELIGIBLE_PLAN_UNITS(self) -> List[str]:
+        """
+        Parse REWARD_ELIGIBLE_PLAN_UNITS from comma-separated string to list.
+        
+        Returns:
+            List of eligible plan duration units (e.g., ['month', 'week'])
+        """
+        if not self.REWARD_ELIGIBLE_PLAN_UNITS_STR or self.REWARD_ELIGIBLE_PLAN_UNITS_STR.strip() == ',':
+            return ["month"]
+        units = [unit.strip().lower() for unit in self.REWARD_ELIGIBLE_PLAN_UNITS_STR.split(',') if unit.strip()]
+        return units if units else ["month"]
+
     class Config:
         """
         Pydantic configuration for Settings.
