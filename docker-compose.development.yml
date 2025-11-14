@@ -38,6 +38,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: powergym/backend:dev
     container_name: powergym_backend_dev
     restart: unless-stopped
     networks:

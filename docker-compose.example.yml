@@ -65,6 +65,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: powergym/backend:latest
     container_name: powergym_backend
     restart: unless-stopped  # Use 'always' in production
     networks:
