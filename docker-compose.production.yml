@@ -1,72 +1,18 @@
-# PowerGym Backend - Docker Compose Configuration (Production)
-# Usage: docker-compose -f docker-compose.production.yml up -d
-#        docker-compose -f docker-compose.production.yml down
-#        docker-compose -f docker-compose.production.yml logs -f
-#
-# IMPORTANT: Configure all environment variables in .env file before starting
-# Do not use default values in production!
+version: '3.8'
 
 networks:
   network:
     driver: bridge
-    name: powergym_prod_network
+    name: powergym_network
 
 services:
-  postgres:
-    image: pgvector/pgvector:0.8.1-pg18-trixie
-    container_name: powergym_db_prod
-    restart: always
-    networks:
-      - network
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
-      TZ: ${TZ:-UTC}
-    # SECURITY: PostgreSQL port exposure
-    # 
-    # IMPORTANT: If your backend connects via Docker network (recommended), you can remove this port mapping
-    # Your DATABASE_URL should use hostname 'postgres': postgresql://user:pass@postgres:5432/dbname
-    #
-    # If you keep the port exposed, configure firewall to restrict access:
-    #   sudo ufw deny 5432  # Block by default
-    #   sudo ufw allow from YOUR_IP to any port 5432  # Allow only your IP
-    #
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - postgres_data_prod:/var/lib/postgresql
-      - ./init-scripts:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    # Resource limits optimized for 2 vCPU / 4GB RAM VPS
-    # Leaves ~0.3 CPU and ~0.5GB for system and other processes
-    deploy:
-      resources:
-        limits:
-          cpus: '0.8'
-          memory: 1.5G
-        reservations:
-          cpus: '0.5'
-          memory: 1G
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "5"
-
   backend:
     build:
       context: .
       dockerfile: Dockerfile
-    image: powergym/backend:prod
-    container_name: powergym_backend_prod
-    restart: always
+    image: powergym/backend
+    container_name: powergym_backend
+    restart: unless-stopped
     networks:
       - network
     ports:
@@ -75,40 +21,33 @@ services:
       - .env
     environment:
       - ENVIRONMENT=production
-    depends_on:
-      postgres:
-        condition: service_healthy
+      # ⚠️ NOTA: Asegúrate de que las variables de conexión a la DB
+      # (como DATABASE_URL) en tu archivo .env ahora apunten a tu base de datos externa.
+    
+    # ❌ DEPENDS_ON HA SIDO ELIMINADO: Ya no depende del servicio 'postgres'.
+    
     volumes:
       - ./logs:/app/logs:rw
       - ./uploads:/app/uploads:rw
       - insightface_models:/root/.insightface/models
+      
+    mem_limit: 2048m 
+    mem_reservation: 1536m 
+    
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"] 
+      start_period: 180s 
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 60s
-    # Resource limits optimized for 2 vCPU / 4GB RAM VPS
-    # Backend gets more resources for face recognition processing
-    deploy:
-      resources:
-        limits:
-          cpus: '1.2'
-          memory: 2.5G
-        reservations:
-          cpus: '0.7'
-          memory: 1.5G
+      retries: 3 
+
     logging:
       driver: "json-file"
       options:
-        max-size: "100m"
-        max-file: "10"
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
-  postgres_data_prod:
-    driver: local
-    name: powergym_postgres_data_prod
   insightface_models:
     driver: local
     name: insightface_models
-

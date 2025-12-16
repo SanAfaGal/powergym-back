@@ -37,8 +37,12 @@ class EmbeddingService:
             Initialized FaceAnalysis instance
             
         Raises:
-            RuntimeError: If InsightFace model initialization fails
+            RuntimeError: If InsightFace model initialization fails or is disabled
         """
+        if not settings.FACE_RECOGNITION_ENABLED:
+            logger.warning("Attempted to initialize face recognition model while disabled")
+            raise RuntimeError("Face recognition is disabled by configuration")
+
         if cls._app is None:
             try:
                 logger.info(f"Initializing InsightFace model: {settings.INSIGHTFACE_MODEL}")

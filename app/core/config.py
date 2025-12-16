@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     POSTGRES_PORT: Optional[int] = Field(None, description="PostgreSQL port")
 
     # ==================== FACE RECOGNITION ====================
+    FACE_RECOGNITION_ENABLED: bool = Field(
+        default=False,
+        description="Master switch to enable/disable all face recognition features"
+    )
+
     EMBEDDING_DIMENSIONS: int = Field(..., description="Face embedding dimensions (typically 512 for InsightFace)")
 
     # InsightFace Configuration
