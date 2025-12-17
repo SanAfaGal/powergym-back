@@ -1,15 +1,10 @@
-FROM python:3.10-bullseye
+# Usamos la versión slim para reducir el tamaño de ~1GB a ~150MB
+FROM python:3.10-slim-bullseye
 
-# Instalar dependencias del sistema
+# Solo instalamos lo estrictamente necesario para la base de datos y utilidades básicas
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    python3-dev \
-    libgl1 \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    ffmpeg \
-    unzip \
+    libpq-dev \
     curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -17,18 +12,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Crear directorio de trabajo
 WORKDIR /app
 
-# Copiar dependencias y sincronizar
+# Instalar 'uv' y sincronizar dependencias antes de copiar el código
+# Esto aprovecha mejor el cache de Docker
 COPY pyproject.toml uv.lock* ./
-RUN pip install uv && uv sync --frozen --no-dev
+RUN pip install --no-cache-dir uv && \
+    uv sync --frozen --no-dev
 
-# Copiar el código fuente
+# Copiar el resto del código
 COPY . .
 
-# Normalizar line endings de entrypoint.sh (CRLF -> LF) y hacerlo ejecutable
+# Limpiar finales de línea del entrypoint y dar permisos
 RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 # Exponer puerto
 EXPOSE 8000
 
-# Usar entrypoint para ejecutar migraciones antes de iniciar
+# Variables de entorno para optimizar Python
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
 ENTRYPOINT ["/app/entrypoint.sh"]

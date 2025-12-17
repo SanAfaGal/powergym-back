@@ -9,8 +9,15 @@ similarity metrics computation.
 import logging
 from typing import List, Tuple, Optional, Any, Dict
 import numpy as np
-import cv2
-from insightface.app import FaceAnalysis
+import numpy as np
+try:
+    import cv2
+    from insightface.app import FaceAnalysis
+except ImportError:
+    # Allow application to start even if AI dependencies are missing
+    # Functionality will be guarded by FACE_RECOGNITION_ENABLED
+    cv2 = None
+    FaceAnalysis = None
 
 from app.core.config import settings
 from app.core.constants import ERROR_FACE_QUALITY_TOO_LOW, ERROR_FACE_TOO_SMALL
@@ -37,8 +44,12 @@ class EmbeddingService:
             Initialized FaceAnalysis instance
             
         Raises:
-            RuntimeError: If InsightFace model initialization fails
+            RuntimeError: If InsightFace model initialization fails or is disabled
         """
+        if not settings.FACE_RECOGNITION_ENABLED:
+            logger.warning("Attempted to initialize face recognition model while disabled")
+            raise RuntimeError("Face recognition is disabled by configuration")
+
         if cls._app is None:
             try:
                 logger.info(f"Initializing InsightFace model: {settings.INSIGHTFACE_MODEL}")

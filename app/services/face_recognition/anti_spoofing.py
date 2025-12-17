@@ -10,7 +10,11 @@ faces from photos or screens.
 import logging
 from typing import Tuple, Optional
 import numpy as np
-import cv2
+import numpy as np
+try:
+    import cv2
+except ImportError:
+    cv2 = None
 
 from app.core.config import settings
 from app.core.constants import (

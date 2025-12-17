@@ -17,6 +17,8 @@ from .embedding import EmbeddingService
 from .database import FaceDatabase
 from .anti_spoofing import LivenessDetector
 from .human_validation import HumanFaceValidator
+from app.core.config import settings
+from app.core.constants import ERROR_FACE_RECOGNITION_DISABLED
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,9 @@ class FaceRecognitionService:
             ValueError: If image processing or face extraction fails
         """
         try:
+            if not settings.FACE_RECOGNITION_ENABLED:
+                raise ValueError(ERROR_FACE_RECOGNITION_DISABLED)
+
             logger.debug("Extracting face encoding from image")
             image_array = ImageProcessor.decode_base64_image(image_base64)
 
@@ -119,6 +124,12 @@ class FaceRecognitionService:
             On failure, returns dict with success=False and error message.
         """
         try:
+            if not settings.FACE_RECOGNITION_ENABLED:
+                return {
+                    "success": False,
+                    "error": ERROR_FACE_RECOGNITION_DISABLED
+                }
+
             logger.info(f"Registering face biometric for client {client_id}")
             
             # Decode image first
@@ -302,6 +313,12 @@ class FaceRecognitionService:
             - error: Error message (if failed)
         """
         try:
+            if not settings.FACE_RECOGNITION_ENABLED:
+                return {
+                    "success": False,
+                    "error": ERROR_FACE_RECOGNITION_DISABLED
+                }
+
             logger.info("Authenticating face")
             embedding, _ = FaceRecognitionService.extract_face_encoding(image_base64)
 
@@ -429,6 +446,12 @@ class FaceRecognitionService:
             - error: Error message (if failed)
         """
         try:
+            if not settings.FACE_RECOGNITION_ENABLED:
+                 return {
+                    "success": False,
+                    "error": ERROR_FACE_RECOGNITION_DISABLED
+                }
+
             logger.debug("Comparing two face images")
             embedding_1, _ = FaceRecognitionService.extract_face_encoding(image_base64_1)
             embedding_2, _ = FaceRecognitionService.extract_face_encoding(image_base64_2)

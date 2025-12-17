@@ -107,6 +107,7 @@ ERROR_INVALID_HUMAN_FACE: Final[str] = "No se pudo validar que sea un rostro hum
 ERROR_INVALID_CREDENTIALS: Final[str] = "Could not validate credentials"
 ERROR_INSUFFICIENT_PERMISSIONS: Final[str] = "Not enough permissions"
 ERROR_INTERNAL_SERVER: Final[str] = "Internal server error"
+ERROR_FACE_RECOGNITION_DISABLED: Final[str] = "Face recognition is currently disabled in the system configuration."
 
 # ============================================================================
 # Success Messages

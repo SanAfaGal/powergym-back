@@ -82,4 +82,4 @@ fi
 
 # Start application
 echo "Starting application..."
-exec uv run gunicorn main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+exec uv run gunicorn main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000

@@ -33,12 +33,6 @@ class UserService:
     def initialize_super_admin(db: Session) -> None:
         """
         Initialize the super admin user on application startup.
-
-        Creates the super admin user if it doesn't exist, using credentials
-        from environment variables.
-
-        Args:
-            db: Database session
         """
         try:
             existing_user = UserRepository.get_by_username(
@@ -47,26 +41,35 @@ class UserService:
 
             if not existing_user:
                 hashed_password = get_password_hash(settings.SUPER_ADMIN_PASSWORD)
-                UserRepository.create(
-                    db=db,
-                    username=settings.SUPER_ADMIN_USERNAME,
-                    email=settings.SUPER_ADMIN_EMAIL,
-                    full_name=settings.SUPER_ADMIN_FULL_NAME,
-                    hashed_password=hashed_password,
-                    role=UserRoleEnum.ADMIN,
-                    disabled=False,
-                )
-                logger.info("Super admin user created successfully")
+                try: # << NUEVO TRY/EXCEPT PARA CONCURRENCIA
+                    UserRepository.create(
+                        db=db,
+                        username=settings.SUPER_ADMIN_USERNAME,
+                        email=settings.SUPER_ADMIN_EMAIL,
+                        full_name=settings.SUPER_ADMIN_FULL_NAME,
+                        hashed_password=hashed_password,
+                        role=UserRoleEnum.ADMIN,
+                        disabled=False,
+                    )
+                    logger.info("Super admin user created successfully")
+                except IntegrityError:
+                    # Esto atrapa el caso de concurrencia. Otro worker acaba de crear el usuario.
+                    db.rollback() # Es CRÍTICO hacer rollback si ocurre un error de DB
+                    logger.debug("Super admin user already exists (concurrency handled)")
+                except Exception as e:
+                    # Cualquier otro error durante la creación
+                    db.rollback()
+                    raise e
             else:
                 logger.debug("Super admin user already exists")
 
         except Exception as e:
+            # Este es el bloque de manejo de errores original.
             logger.error(
                 "Error initializing super admin: %s", str(e), exc_info=True
             )
-            # Don't raise - allow app to start even if super admin creation fails
-            # Admin can be created manually if needed
-
+            # No se hace raise - se permite que la app inicie
+            
     @staticmethod
     def get_user_by_username(db: Session, username: str) -> Optional[UserInDB]:
         """
