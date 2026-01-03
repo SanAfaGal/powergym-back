@@ -1,0 +1,35 @@
+networks:
+  network:
+    driver: bridge
+    name: powergym_network
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: powergym/backend
+    container_name: powergym_backend
+    restart: unless-stopped
+    networks:
+      - network
+    ports:
+      - "${API_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      
+    
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"] 
+      start_period: 180s 
+      interval: 30s
+      timeout: 10s
+      retries: 3 
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
